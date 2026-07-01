@@ -1,7 +1,10 @@
 import os
 import json
+import queue
 import shlex
+import subprocess
 import sys
+import tempfile
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -119,11 +122,13 @@ class VideoScriptGUI:
         self.pending_agent_actions = None
         self.workflow = WorkflowState(output_dir=self.output_dir)
         self.settings_visible = False
+        self.ui_queue = queue.Queue()
 
         self.setup_styles()
         self.create_widgets()
         self.load_config()
         self.setup_drag_and_drop()
+        self.root.after(50, self.process_ui_queue)
 
     def setup_styles(self):
         style = ttk.Style()
@@ -284,7 +289,12 @@ class VideoScriptGUI:
         action_area.columnconfigure(0, weight=1)
         action_row = self.make_button_bar(action_area)
         action_row.grid(row=0, column=0, sticky=tk.EW)
-        action_row.add_button("转写参考", self.start_reference_transcription, style="Primary.TButton", width=12)
+        self.reference_transcribe_button = action_row.add_button(
+            "转写参考",
+            self.start_reference_transcription,
+            style="Primary.TButton",
+            width=12,
+        )
         action_row.add_button("使用当前文本", self.sync_reference_text, width=13)
         action_row.add_button("导入文本", self.import_reference_text, width=10)
         self.start_button = action_row.add_button("旧流程生成文案", self.start_generation, width=15)
@@ -420,6 +430,21 @@ class VideoScriptGUI:
             width = self.root.winfo_width()
             if width > 1:
                 self.main_paned.sashpos(0, max(780, width - 360))
+        except tk.TclError:
+            pass
+
+    def post_ui(self, func, *args, **kwargs):
+        self.ui_queue.put((func, args, kwargs))
+
+    def process_ui_queue(self):
+        try:
+            while True:
+                func, args, kwargs = self.ui_queue.get_nowait()
+                func(*args, **kwargs)
+        except queue.Empty:
+            pass
+        try:
+            self.root.after(50, self.process_ui_queue)
         except tk.TclError:
             pass
 
@@ -660,7 +685,16 @@ class VideoScriptGUI:
 
     def start_reference_transcription(self):
         if not self.video_queue:
+            self.set_status("请先添加视频文件")
+            self.log("转写参考未启动：请先添加视频文件。")
             messagebox.showwarning("提示", "请先添加视频文件")
+            return
+        missing_videos = [path for path in self.video_queue if not os.path.exists(path)]
+        if missing_videos:
+            message = f"视频文件不存在: {missing_videos[0]}"
+            self.set_status("视频文件不存在")
+            self.log(f"转写参考未启动：{message}")
+            messagebox.showwarning("提示", message)
             return
         task = {
             "videos": list(self.video_queue),
@@ -670,6 +704,9 @@ class VideoScriptGUI:
         self.is_running = True
         self.set_running_state(True)
         self.set_progress(0)
+        self.set_status(f"准备转写 {len(task['videos'])} 个视频")
+        self.log(f"转写参考任务已启动，共 {len(task['videos'])} 个视频，模型: {task['model_size']}")
+        self.log_agent(f"已启动参考转写，共 {len(task['videos'])} 个视频。")
         threading.Thread(target=self.reference_transcription_worker, args=(task,), daemon=True).start()
 
     def reference_transcription_worker(self, task):
@@ -683,14 +720,12 @@ class VideoScriptGUI:
                 video_name = self.safe_name(video_path)
                 self.set_status(f"转写第 {index}/{total} 个视频")
                 self.log(f"参考转写: {os.path.basename(video_path)}")
-                audio_path = AudioExtractor(output_dir=task["output_dir"]).extract_audio(
+                self.set_status(f"正在转写第 {index}/{total} 个视频")
+                transcript_text = self.transcribe_reference_video(
                     video_path,
-                    f"audio_{video_name}.wav",
-                )
-                transcript_text = SpeechToText(
-                    model_size=task["model_size"],
                     output_dir=task["output_dir"],
-                ).transcribe(audio_path, language="zh")
+                    model_size=task["model_size"],
+                )
                 transcripts.append(f"===== {video_name} =====\n{transcript_text}")
                 self.append_text(self.transcript_output, f"\n===== {video_name} =====\n{transcript_text}\n")
                 self.set_progress(index / max(total, 1) * 100)
@@ -712,6 +747,55 @@ class VideoScriptGUI:
             self.is_running = False
             self.set_running_state(False)
             self.set_status("就绪")
+
+    def transcribe_reference_video(self, video_path, output_dir, model_size):
+        os.makedirs(output_dir, exist_ok=True)
+        result_file = tempfile.NamedTemporaryFile(
+            prefix="reference_transcription_",
+            suffix=".json",
+            dir=output_dir,
+            delete=False,
+        )
+        result_path = result_file.name
+        result_file.close()
+
+        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reference_transcription_cli.py")
+        command = [
+            sys.executable,
+            script_path,
+            "--video",
+            video_path,
+            "--output-dir",
+            output_dir,
+            "--model-size",
+            model_size,
+            "--language",
+            "zh",
+            "--result-json",
+            result_path,
+        ]
+        result = subprocess.run(command, capture_output=True, text=True)
+        if result.stdout.strip():
+            for line in result.stdout.strip().splitlines():
+                self.log(line)
+        if result.stderr.strip():
+            for line in result.stderr.strip().splitlines()[-12:]:
+                self.log(line)
+
+        payload = {}
+        if os.path.exists(result_path):
+            with open(result_path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+
+        try:
+            os.remove(result_path)
+        except OSError:
+            pass
+
+        if result.returncode != 0 or not payload.get("ok"):
+            error = payload.get("error") or f"转写子进程失败，退出码 {result.returncode}"
+            raise RuntimeError(error)
+        return payload.get("transcript", "")
 
     def start_storyboard_analysis(self):
         try:
@@ -1008,14 +1092,14 @@ class VideoScriptGUI:
 
     def set_text(self, text_widget, content):
         if threading.current_thread() is not self.main_thread:
-            self.root.after(0, self.set_text, text_widget, content)
+            self.post_ui(self.set_text, text_widget, content)
             return
         text_widget.delete("1.0", tk.END)
         text_widget.insert(tk.END, content)
 
     def append_text(self, text_widget, content):
         if threading.current_thread() is not self.main_thread:
-            self.root.after(0, self.append_text, text_widget, content)
+            self.post_ui(self.append_text, text_widget, content)
             return
         text_widget.insert(tk.END, content)
         text_widget.see(tk.END)
@@ -1025,32 +1109,36 @@ class VideoScriptGUI:
 
     def set_status(self, message):
         if threading.current_thread() is not self.main_thread:
-            self.root.after(0, self.set_status, message)
+            self.post_ui(self.set_status, message)
             return
         self.status_var.set(message)
 
     def set_running_state(self, running):
         if threading.current_thread() is not self.main_thread:
-            self.root.after(0, self.set_running_state, running)
+            self.post_ui(self.set_running_state, running)
             return
-        self.start_button.config(state=tk.DISABLED if running else tk.NORMAL)
-        self.stop_button.config(state=tk.NORMAL if running else tk.DISABLED)
+        for button_name in ("reference_transcribe_button", "start_button"):
+            button = getattr(self, button_name, None)
+            if button is not None:
+                button.config(state=tk.DISABLED if running else tk.NORMAL)
+        if getattr(self, "stop_button", None) is not None:
+            self.stop_button.config(state=tk.NORMAL if running else tk.DISABLED)
 
     def set_progress(self, value):
         if threading.current_thread() is not self.main_thread:
-            self.root.after(0, self.set_progress, value)
+            self.post_ui(self.set_progress, value)
             return
         self.progress.config(value=value)
 
     def show_error(self, message):
         if threading.current_thread() is not self.main_thread:
-            self.root.after(0, self.show_error, message)
+            self.post_ui(self.show_error, message)
             return
         messagebox.showerror("错误", message)
 
     def log_agent(self, message):
         if threading.current_thread() is not self.main_thread:
-            self.root.after(0, self.log_agent, message)
+            self.post_ui(self.log_agent, message)
             return
         self.agent_output.insert(tk.END, message + "\n")
         self.agent_output.see(tk.END)
@@ -1248,7 +1336,7 @@ class VideoScriptGUI:
 
     def queue_agent_actions(self, actions, summary, require_confirmation=False):
         if threading.current_thread() is not self.main_thread:
-            self.root.after(0, self.queue_agent_actions, actions, summary, require_confirmation)
+            self.post_ui(self.queue_agent_actions, actions, summary, require_confirmation)
             return
 
         self.log_agent(f"计划: {summary}")
@@ -1272,7 +1360,7 @@ class VideoScriptGUI:
 
     def apply_agent_actions(self, actions):
         if threading.current_thread() is not self.main_thread:
-            self.root.after(0, self.apply_agent_actions, actions)
+            self.post_ui(self.apply_agent_actions, actions)
             return
 
         for action in actions:
