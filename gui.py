@@ -20,8 +20,11 @@ import app_memory
 from ai_client import OpenAICompatibleClient
 from ai_rewriter import AIRewriter
 from audio_extractor import AudioExtractor
+import gui_pages
+from media_assembler import FFmpegAssemblyRenderer
 from multimodal_interfaces import MaterialAnalyzer
 from speech_to_text import SpeechToText
+from workflow_state import WorkflowState
 from text_cleaner import TextCleaner
 from title_generator import TitleGenerator
 
@@ -43,6 +46,7 @@ class VideoScriptGUI:
         self.output_dir = config.OUTPUT_DIR
         self.vision_model = config.VISION_API_MODEL
         self.pending_agent_actions = None
+        self.workflow = WorkflowState(output_dir=self.output_dir)
 
         self.setup_styles()
         self.create_widgets()
@@ -66,12 +70,181 @@ class VideoScriptGUI:
         paned.add(main_frame, weight=4)
         paned.add(agent_frame, weight=1)
 
-        ttk.Label(main_frame, text="视频生成文案", style="Title.TLabel").pack(anchor=tk.W, pady=(0, 10))
+        ttk.Label(main_frame, text="短视频工作流", style="Title.TLabel").pack(anchor=tk.W, pady=(0, 10))
 
         self.create_common_settings(main_frame)
-        self.create_task_settings(main_frame)
-        self.create_result_area(main_frame)
+        self.create_workflow_tabs(main_frame)
         self.create_agent_panel(agent_frame)
+
+    def create_workflow_tabs(self, parent):
+        self.workflow_notebook = ttk.Notebook(parent)
+        self.workflow_notebook.pack(fill=tk.BOTH, expand=True)
+
+        reference_tab = ttk.Frame(self.workflow_notebook, padding="10")
+        storyboard_tab = ttk.Frame(self.workflow_notebook, padding="10")
+        material_tab = ttk.Frame(self.workflow_notebook, padding="10")
+        voiceover_tab = ttk.Frame(self.workflow_notebook, padding="10")
+        assembly_tab = ttk.Frame(self.workflow_notebook, padding="10")
+        results_tab = ttk.Frame(self.workflow_notebook, padding="10")
+
+        self.workflow_notebook.add(reference_tab, text="参考转写")
+        self.workflow_notebook.add(storyboard_tab, text="分镜分析")
+        self.workflow_notebook.add(material_tab, text="素材库")
+        self.workflow_notebook.add(voiceover_tab, text="配音")
+        self.workflow_notebook.add(assembly_tab, text="合成")
+        self.workflow_notebook.add(results_tab, text="日志结果")
+
+        self.create_reference_page(reference_tab)
+        self.create_storyboard_page(storyboard_tab)
+        self.create_material_page(material_tab)
+        self.create_voiceover_page(voiceover_tab)
+        self.create_assembly_page(assembly_tab)
+        self.create_result_area(results_tab)
+
+    def create_reference_page(self, parent):
+        parent.columnconfigure(0, weight=2)
+        parent.columnconfigure(1, weight=3)
+        parent.rowconfigure(0, weight=1)
+
+        left = ttk.Frame(parent)
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
+        right = ttk.Frame(parent)
+        right.grid(row=0, column=1, sticky="nsew")
+        right.columnconfigure(1, weight=1)
+        right.rowconfigure(7, weight=1)
+
+        self.drop_frame = tk.Frame(left, bg="#e8f4fc", height=110, highlightthickness=1, highlightbackground="#8ab4d6")
+        self.drop_frame.pack(fill=tk.X, pady=(0, 8))
+        self.drop_frame.pack_propagate(False)
+        drop_text = "拖拽视频文件到这里"
+        if not DND_FILES:
+            drop_text = "拖拽依赖未安装，可使用添加按钮"
+        self.drop_label = tk.Label(
+            self.drop_frame,
+            text=drop_text,
+            bg="#e8f4fc",
+            fg="#2563eb",
+            font=(FONT_FAMILY, 12, "bold"),
+        )
+        self.drop_label.pack(expand=True)
+
+        self.video_listbox = tk.Listbox(left, height=10, font=(FONT_FAMILY, 10))
+        self.video_listbox.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
+
+        video_buttons = ttk.Frame(left)
+        video_buttons.pack(fill=tk.X)
+        ttk.Button(video_buttons, text="添加文件...", style="Secondary.TButton", command=self.add_videos).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(video_buttons, text="添加文件夹...", style="Secondary.TButton", command=self.add_folder).pack(side=tk.LEFT, padx=5)
+        ttk.Button(video_buttons, text="删除选中", style="Secondary.TButton", command=self.remove_selected_video).pack(side=tk.LEFT, padx=5)
+        ttk.Button(video_buttons, text="清空", style="Secondary.TButton", command=self.clear_videos).pack(side=tk.LEFT, padx=5)
+
+        ttk.Label(right, text="产品名称:").grid(row=0, column=0, sticky=tk.W, pady=4)
+        self.product_entry = ttk.Entry(right, width=34, font=(FONT_FAMILY, 10))
+        self.product_entry.grid(row=0, column=1, sticky="ew", padx=8, pady=4)
+
+        ttk.Label(right, text="产品卖点:").grid(row=1, column=0, sticky=tk.W, pady=4)
+        self.points_entry = ttk.Entry(right, width=48, font=(FONT_FAMILY, 10))
+        self.points_entry.grid(row=1, column=1, sticky="ew", padx=8, pady=4)
+        self.points_entry.insert(0, "保湿、抗衰老、美白")
+
+        ttk.Label(right, text="改写要求:").grid(row=2, column=0, sticky=tk.NW, pady=4)
+        self.requirements_text = scrolledtext.ScrolledText(right, height=4, wrap=tk.WORD, font=(FONT_FAMILY, 10))
+        self.requirements_text.grid(row=2, column=1, sticky="ew", padx=8, pady=4)
+        self.requirements_text.insert(tk.END, "保留核心信息；更口语化；适合短视频口播；控制在300字以内")
+
+        ttk.Label(right, text="Whisper模型:").grid(row=3, column=0, sticky=tk.W, pady=4)
+        model_frame = ttk.Frame(right)
+        model_frame.grid(row=3, column=1, sticky=tk.W, padx=8, pady=4)
+        self.model_var = tk.StringVar(value="medium")
+        for name in ["tiny", "base", "small", "medium", "large-v3"]:
+            ttk.Radiobutton(model_frame, text=name, variable=self.model_var, value=name).pack(side=tk.LEFT, padx=5)
+
+        options = ttk.Frame(right)
+        options.grid(row=4, column=1, sticky=tk.W, padx=8, pady=(8, 4))
+        self.enable_cleaning_var = tk.BooleanVar(value=True)
+        self.enable_titles_var = tk.BooleanVar(value=True)
+        self.save_transcript_var = tk.BooleanVar(value=True)
+        self.save_clean_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(options, text="文本清洗", variable=self.enable_cleaning_var).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Checkbutton(options, text="生成标题", variable=self.enable_titles_var).pack(side=tk.LEFT, padx=10)
+        ttk.Checkbutton(options, text="保存原文", variable=self.save_transcript_var).pack(side=tk.LEFT, padx=10)
+        ttk.Checkbutton(options, text="保存清洗文本", variable=self.save_clean_var).pack(side=tk.LEFT, padx=10)
+
+        action_row = ttk.Frame(right)
+        action_row.grid(row=5, column=1, sticky=tk.EW, padx=8, pady=(8, 6))
+        ttk.Button(action_row, text="转写参考", style="Primary.TButton", command=self.start_reference_transcription).pack(side=tk.LEFT)
+        ttk.Button(action_row, text="使用当前文本", style="Secondary.TButton", command=self.sync_reference_text).pack(side=tk.LEFT, padx=6)
+        ttk.Button(action_row, text="导入文本", style="Secondary.TButton", command=self.import_reference_text).pack(side=tk.LEFT, padx=6)
+        self.start_button = ttk.Button(action_row, text="旧流程生成文案", style="Secondary.TButton", command=self.start_generation)
+        self.start_button.pack(side=tk.LEFT, padx=6)
+        self.stop_button = ttk.Button(action_row, text="停止", style="Secondary.TButton", command=self.stop_generation, state=tk.DISABLED)
+        self.stop_button.pack(side=tk.LEFT, padx=6)
+        self.status_var = tk.StringVar(value="就绪")
+        ttk.Label(action_row, textvariable=self.status_var, style="Info.TLabel").pack(side=tk.LEFT, padx=10)
+
+        project_row = ttk.Frame(right)
+        project_row.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(0, 6))
+        ttk.Button(project_row, text="保存项目", style="Secondary.TButton", command=self.save_project_dialog).pack(side=tk.LEFT)
+        ttk.Button(project_row, text="加载项目", style="Secondary.TButton", command=self.load_project_dialog).pack(side=tk.LEFT, padx=6)
+
+        ttk.Label(right, text="参考文案:").grid(row=7, column=0, sticky=tk.NW, pady=4)
+        self.reference_text = scrolledtext.ScrolledText(right, height=11, wrap=tk.WORD, font=(FONT_FAMILY, 10))
+        self.reference_text.grid(row=7, column=1, sticky="nsew", padx=8, pady=4)
+
+    def create_storyboard_page(self, parent):
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(1, weight=1)
+        controls = ttk.Frame(parent)
+        controls.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        ttk.Label(controls, text="目标时长(s):").pack(side=tk.LEFT)
+        self.storyboard_duration_var = tk.StringVar(value="")
+        ttk.Entry(controls, textvariable=self.storyboard_duration_var, width=8).pack(side=tk.LEFT, padx=(4, 12))
+        ttk.Label(controls, text="分镜数:").pack(side=tk.LEFT)
+        self.storyboard_count_var = tk.StringVar(value="")
+        ttk.Entry(controls, textvariable=self.storyboard_count_var, width=8).pack(side=tk.LEFT, padx=(4, 12))
+        ttk.Button(controls, text="分析分镜", style="Primary.TButton", command=self.start_storyboard_analysis).pack(side=tk.LEFT)
+
+        split = ttk.PanedWindow(parent, orient=tk.HORIZONTAL)
+        split.grid(row=1, column=0, sticky="nsew")
+        summary_frame = ttk.LabelFrame(split, text="分镜列表", padding="8")
+        json_frame = ttk.LabelFrame(split, text="分镜 JSON", padding="8")
+        split.add(summary_frame, weight=1)
+        split.add(json_frame, weight=1)
+        self.storyboard_summary_output = self.make_text_area(summary_frame, height=18)
+        self.storyboard_json_output = self.make_text_area(json_frame, height=18)
+
+    def create_material_page(self, parent):
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(1, weight=1)
+        controls = ttk.Frame(parent)
+        controls.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        ttk.Button(controls, text="打标当前视频列表", style="Primary.TButton", command=self.confirm_material_tagging).pack(side=tk.LEFT)
+        ttk.Button(controls, text="刷新摘要", style="Secondary.TButton", command=self.refresh_material_output).pack(side=tk.LEFT, padx=6)
+        output_frame = ttk.Frame(parent)
+        output_frame.grid(row=1, column=0, sticky="nsew")
+        self.material_output = self.make_text_area(output_frame, height=22)
+
+    def create_voiceover_page(self, parent):
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(1, weight=1)
+        controls = ttk.Frame(parent)
+        controls.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        ttk.Button(controls, text="按分镜生成配音", style="Primary.TButton", command=self.confirm_voiceover_generation).pack(side=tk.LEFT)
+        ttk.Button(controls, text="刷新摘要", style="Secondary.TButton", command=self.refresh_voiceover_output).pack(side=tk.LEFT, padx=6)
+        output_frame = ttk.Frame(parent)
+        output_frame.grid(row=1, column=0, sticky="nsew")
+        self.voiceover_output = self.make_text_area(output_frame, height=22)
+
+    def create_assembly_page(self, parent):
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(1, weight=1)
+        controls = ttk.Frame(parent)
+        controls.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        ttk.Button(controls, text="生成合成计划", style="Primary.TButton", command=self.confirm_assembly_plan).pack(side=tk.LEFT)
+        ttk.Button(controls, text="刷新摘要", style="Secondary.TButton", command=self.refresh_assembly_output).pack(side=tk.LEFT, padx=6)
+        output_frame = ttk.Frame(parent)
+        output_frame.grid(row=1, column=0, sticky="nsew")
+        self.assembly_output = self.make_text_area(output_frame, height=22)
 
     def create_agent_panel(self, parent):
         frame = ttk.LabelFrame(parent, text="AI 控制台", padding="10")
@@ -224,9 +397,12 @@ class VideoScriptGUI:
     def setup_drag_and_drop(self):
         if not DND_FILES:
             return
-        for widget in (self.drop_frame, self.drop_label, self.video_listbox):
-            widget.drop_target_register(DND_FILES)
-            widget.dnd_bind("<<Drop>>", self.handle_drop)
+        try:
+            for widget in (self.drop_frame, self.drop_label, self.video_listbox):
+                widget.drop_target_register(DND_FILES)
+                widget.dnd_bind("<<Drop>>", self.handle_drop)
+        except tk.TclError:
+            self.log("拖拽组件未就绪，可使用添加按钮导入视频。")
 
     def handle_drop(self, event):
         try:
@@ -248,6 +424,7 @@ class VideoScriptGUI:
         self.api_model_entry.insert(0, config.API_MODEL)
         self.output_dir = config.OUTPUT_DIR
         self.output_dir_var.set(config.OUTPUT_DIR)
+        self.workflow.output_dir = config.OUTPUT_DIR
 
     def save_config(self):
         try:
@@ -280,7 +457,312 @@ class VideoScriptGUI:
     def refresh_output_dir(self):
         self.output_dir = self.output_dir_var.get().strip() or self.output_dir
         os.makedirs(self.output_dir, exist_ok=True)
+        self.workflow.output_dir = self.output_dir
         return self.output_dir
+
+    def sync_reference_text(self):
+        text = self.get_text(self.reference_text)
+        if not text:
+            text = self.get_text(self.transcript_output)
+        self.workflow.set_reference_text(
+            text,
+            title=self.product_entry.get().strip() or "参考文案",
+            product_name=self.product_entry.get().strip(),
+            keywords=self.keywords_from_points(),
+        )
+        self.log(f"参考文案已同步，长度 {len(text)} 字符")
+        return text
+
+    def import_reference_text(self):
+        filename = filedialog.askopenfilename(
+            title="导入参考文案",
+            filetypes=[("文本文件", "*.txt *.md"), ("所有文件", "*.*")],
+        )
+        if not filename:
+            return
+        with open(filename, "r", encoding="utf-8") as f:
+            content = f.read()
+        self.set_text(self.reference_text, content)
+        self.sync_reference_text()
+
+    def save_project_dialog(self):
+        output_dir = self.refresh_output_dir()
+        default_path = os.path.join(output_dir, "workflow_project.json")
+        filename = filedialog.asksaveasfilename(
+            title="保存项目",
+            initialfile=os.path.basename(default_path),
+            initialdir=output_dir,
+            defaultextension=".json",
+            filetypes=[("JSON", "*.json"), ("所有文件", "*.*")],
+        )
+        if filename:
+            self.save_project(filename)
+
+    def load_project_dialog(self):
+        filename = filedialog.askopenfilename(
+            title="加载项目",
+            initialdir=self.refresh_output_dir(),
+            filetypes=[("JSON", "*.json"), ("所有文件", "*.*")],
+        )
+        if filename:
+            self.load_project(filename)
+
+    def save_project(self, path=None):
+        if path is None:
+            path = os.path.join(self.refresh_output_dir(), "workflow_project.json")
+        self.sync_reference_text()
+        result = self.workflow.save_project(path)
+        saved_path = result.get("project_path", result) if isinstance(result, dict) else result
+        self.log(f"项目已保存: {saved_path}")
+        self.log_agent(f"项目已保存: {saved_path}")
+        return saved_path
+
+    def load_project(self, path):
+        self.workflow = WorkflowState.load_project(path)
+        self.output_dir = self.workflow.output_dir or self.output_dir
+        self.output_dir_var.set(self.output_dir)
+        self.set_text(self.reference_text, self.workflow.reference_text or "")
+        self.refresh_storyboard_output()
+        self.refresh_material_output()
+        self.refresh_voiceover_output()
+        self.refresh_assembly_output()
+        self.log(f"项目已加载: {path}")
+        self.log_agent(f"项目已加载: {path}")
+
+    def start_reference_transcription(self):
+        if not self.video_queue:
+            messagebox.showwarning("提示", "请先添加视频文件")
+            return
+        task = {
+            "videos": list(self.video_queue),
+            "output_dir": self.refresh_output_dir(),
+            "model_size": self.model_var.get(),
+        }
+        self.is_running = True
+        self.set_running_state(True)
+        self.set_progress(0)
+        threading.Thread(target=self.reference_transcription_worker, args=(task,), daemon=True).start()
+
+    def reference_transcription_worker(self, task):
+        transcripts = []
+        videos = task["videos"]
+        total = len(videos)
+        try:
+            for index, video_path in enumerate(videos, 1):
+                if not self.is_running:
+                    break
+                video_name = self.safe_name(video_path)
+                self.set_status(f"转写第 {index}/{total} 个视频")
+                self.log(f"参考转写: {os.path.basename(video_path)}")
+                audio_path = AudioExtractor(output_dir=task["output_dir"]).extract_audio(
+                    video_path,
+                    f"audio_{video_name}.wav",
+                )
+                transcript_text = SpeechToText(
+                    model_size=task["model_size"],
+                    output_dir=task["output_dir"],
+                ).transcribe(audio_path, language="zh")
+                transcripts.append(f"===== {video_name} =====\n{transcript_text}")
+                self.append_text(self.transcript_output, f"\n===== {video_name} =====\n{transcript_text}\n")
+                self.set_progress(index / max(total, 1) * 100)
+
+            merged = "\n\n".join(transcripts).strip()
+            if merged:
+                self.set_text(self.reference_text, merged)
+                self.workflow.set_reference_text(
+                    merged,
+                    title=self.product_entry.get().strip() or "参考文案",
+                    product_name=self.product_entry.get().strip(),
+                    keywords=self.keywords_from_points(),
+                )
+                self.log("参考转写完成，已写入参考文案页。")
+        except Exception as e:
+            self.show_error(str(e))
+            self.log(f"[参考转写错误] {e}")
+        finally:
+            self.is_running = False
+            self.set_running_state(False)
+            self.set_status("就绪")
+
+    def start_storyboard_analysis(self):
+        try:
+            self.apply_api_settings(require_key=True)
+            reference_text = self.sync_reference_text()
+            if not reference_text.strip():
+                messagebox.showwarning("提示", "请先输入或转写参考文案")
+                return
+            output_dir = self.refresh_output_dir()
+            target_duration = self._float_or_none(self.storyboard_duration_var.get())
+            shot_count = self._int_or_none(self.storyboard_count_var.get())
+            threading.Thread(
+                target=self.storyboard_worker,
+                args=(output_dir, target_duration, shot_count),
+                daemon=True,
+            ).start()
+        except Exception as e:
+            self.show_error(str(e))
+
+    def storyboard_worker(self, output_dir, target_duration, shot_count):
+        try:
+            self.set_status("正在分析分镜")
+            self.log("正在调用 AI 分析分镜...")
+            analysis = self.workflow.analyze_storyboard(
+                target_duration_seconds=target_duration,
+                shot_count=shot_count,
+                model=config.API_MODEL,
+            )
+            self.refresh_storyboard_output()
+            self.log(f"分镜分析完成，共 {len(analysis.shots)} 个分镜")
+        except Exception as e:
+            self.log(f"[分镜分析错误] {e}")
+            self.show_error(str(e))
+        finally:
+            self.set_status("就绪")
+
+    def confirm_material_tagging(self):
+        if not self.video_queue:
+            messagebox.showwarning("提示", "请先添加素材视频")
+            return
+        if not messagebox.askyesno("确认", "将调用视觉模型分析当前视频列表，是否继续？"):
+            return
+        self.start_material_tagging()
+
+    def start_material_tagging(self):
+        try:
+            self.apply_api_settings(require_key=True)
+            output_dir = self.refresh_output_dir()
+            videos = list(self.video_queue)
+            vision_model = self.vision_model or config.VISION_API_MODEL
+            threading.Thread(
+                target=self.material_tagging_worker,
+                args=(videos, output_dir, vision_model),
+                daemon=True,
+            ).start()
+        except Exception as e:
+            self.show_error(str(e))
+
+    def material_tagging_worker(self, videos, output_dir, vision_model):
+        try:
+            self.set_status("正在打标素材")
+            self.log(f"正在分析 {len(videos)} 个素材视频...")
+            assets = self.workflow.analyze_materials(
+                videos,
+                output_dir=output_dir,
+                vision_model=vision_model,
+                max_frames=4,
+                every_seconds=3,
+            )
+            self.refresh_material_output()
+            self.log(f"素材打标完成，共 {len(assets)} 个素材")
+        except Exception as e:
+            self.log(f"[素材打标错误] {e}")
+            self.show_error(str(e))
+        finally:
+            self.set_status("就绪")
+
+    def confirm_voiceover_generation(self):
+        if not self.workflow.storyboard_analysis or not self.workflow.storyboard_analysis.shots:
+            messagebox.showwarning("提示", "请先完成分镜分析")
+            return
+        if not messagebox.askyesno("确认", "将调用 TTS 模型按分镜生成配音，是否继续？"):
+            return
+        self.start_voiceover_generation()
+
+    def start_voiceover_generation(self):
+        try:
+            self.apply_api_settings(require_key=True)
+            output_dir = self.refresh_output_dir()
+            threading.Thread(
+                target=self.voiceover_worker,
+                args=(output_dir,),
+                daemon=True,
+            ).start()
+        except Exception as e:
+            self.show_error(str(e))
+
+    def voiceover_worker(self, output_dir):
+        try:
+            self.set_status("正在生成配音")
+            self.log("正在调用 TTS 生成分镜配音...")
+            segments = self.workflow.generate_voiceovers(output_dir=output_dir)
+            self.refresh_voiceover_output()
+            self.log(f"配音生成完成，共 {len(segments)} 段")
+        except Exception as e:
+            self.log(f"[配音错误] {e}")
+            self.show_error(str(e))
+        finally:
+            self.set_status("就绪")
+
+    def confirm_assembly_plan(self):
+        if not messagebox.askyesno("确认", "将根据分镜、素材和配音生成合成计划，不会直接渲染视频。是否继续？"):
+            return
+        self.start_assembly_plan()
+
+    def start_assembly_plan(self):
+        output_dir = self.refresh_output_dir()
+        threading.Thread(target=self.assembly_worker, args=(output_dir,), daemon=True).start()
+
+    def assembly_worker(self, output_dir):
+        try:
+            self.set_status("正在生成合成计划")
+            self.log("正在生成合成计划...")
+            plan = self.workflow.build_assembly_plan(output_dir=output_dir)
+            self.refresh_assembly_output()
+            self.log(f"合成计划完成，共 {len(plan.get('segments', [])) if isinstance(plan, dict) else len(getattr(plan, 'items', []))} 段")
+        except Exception as e:
+            self.log(f"[合成计划错误] {e}")
+            self.show_error(str(e))
+        finally:
+            self.set_status("就绪")
+
+    def refresh_storyboard_output(self):
+        analysis = self.workflow.storyboard_analysis
+        self.set_text(self.storyboard_summary_output, gui_pages.render_storyboard_summary(analysis))
+        payload = analysis.to_dict() if hasattr(analysis, "to_dict") else analysis
+        self.set_text(self.storyboard_json_output, json.dumps(payload or {}, ensure_ascii=False, indent=2))
+
+    def refresh_material_output(self):
+        self.set_text(self.material_output, gui_pages.render_material_summary(self.workflow.material_assets))
+
+    def refresh_voiceover_output(self):
+        self.set_text(self.voiceover_output, gui_pages.render_voiceover_summary(self.workflow.voiceover_segments))
+
+    def refresh_assembly_output(self):
+        summary = gui_pages.render_assembly_summary(self.workflow.assembly_plan)
+        command = self.assembly_command_preview()
+        if command:
+            summary = f"{summary}\n\nFFmpeg 命令预览:\n{command}"
+        self.set_text(self.assembly_output, summary)
+
+    def _float_or_none(self, value):
+        value = str(value or "").strip()
+        if not value:
+            return None
+        return float(value)
+
+    def _int_or_none(self, value):
+        value = str(value or "").strip()
+        if not value:
+            return None
+        return int(value)
+
+    def keywords_from_points(self):
+        raw = self.points_entry.get().strip()
+        if not raw:
+            return []
+        normalized = raw.replace("，", ",").replace("、", ",").replace("；", ",").replace(";", ",")
+        return [item.strip() for item in normalized.split(",") if item.strip()]
+
+    def assembly_command_preview(self):
+        plan = self.workflow.assembly_plan
+        if not plan:
+            return ""
+        metadata = getattr(plan, "metadata", {}) or {}
+        renderer = metadata.get("renderer", {}) if isinstance(metadata, dict) else {}
+        command = renderer.get("command") if isinstance(renderer, dict) else None
+        if isinstance(command, list):
+            return " ".join(str(part) for part in command)
+        return str(command or "")
 
     def add_videos(self):
         filenames = filedialog.askopenfilename(
@@ -420,6 +902,41 @@ class VideoScriptGUI:
                     "将开始处理当前视频列表。",
                     require_confirmation=True,
                 )
+            elif normalized in {"转写参考", "参考转写", "transcribe reference"}:
+                self.queue_agent_actions(
+                    [{"action": "transcribe_reference"}],
+                    "将把当前视频列表转写为参考文案。",
+                    require_confirmation=False,
+                )
+            elif normalized in {"分析分镜", "分镜分析", "analyze storyboard"}:
+                self.queue_agent_actions(
+                    [{"action": "analyze_storyboard"}],
+                    "将根据参考文案生成分镜。",
+                    require_confirmation=False,
+                )
+            elif normalized in {"打标素材", "素材打标", "tag materials"}:
+                self.queue_agent_actions(
+                    [{"action": "tag_materials"}],
+                    "将调用视觉模型批量分析当前视频素材。",
+                    require_confirmation=True,
+                )
+            elif normalized in {"生成配音", "配音", "generate voiceovers"}:
+                self.queue_agent_actions(
+                    [{"action": "generate_voiceovers"}],
+                    "将调用 TTS 模型为分镜生成配音。",
+                    require_confirmation=True,
+                )
+            elif normalized in {"生成合成计划", "合成计划", "build assembly plan"}:
+                self.queue_agent_actions(
+                    [{"action": "build_assembly_plan"}],
+                    "将生成视频音频匹配合成计划，不会直接渲染视频。",
+                    require_confirmation=True,
+                )
+            elif normalized in {"保存项目", "save project"}:
+                self.save_project()
+            elif command.startswith("加载项目 ") or command.startswith("load project "):
+                value = command.split(" ", 1)[1].strip()
+                self.load_project(str(Path(value).expanduser()))
             elif normalized in {"停止", "stop"}:
                 self.stop_generation()
                 self.log_agent("已请求停止任务。")
@@ -518,6 +1035,13 @@ class VideoScriptGUI:
                     "  添加 /path/to/video.mp4",
                     "  添加文件夹 /path/to/folder",
                     "  清空视频",
+                    "  转写参考",
+                    "  分析分镜",
+                    "  打标素材",
+                    "  生成配音",
+                    "  生成合成计划",
+                    "  保存项目",
+                    "  加载项目 /path/to/workflow_project.json",
                     "  抽帧 /path/to/video.mp4",
                     "  分析素材 /path/to/video.mp4",
                     "  记住 我的默认风格是短句、强钩子、不要夸大功效",
@@ -622,6 +1146,28 @@ class VideoScriptGUI:
             elif name == "start_generation":
                 self.start_generation()
                 self.log_agent("已请求开始生成。")
+            elif name == "transcribe_reference":
+                self.start_reference_transcription()
+                self.log_agent("已请求转写参考。")
+            elif name == "analyze_storyboard":
+                self.start_storyboard_analysis()
+                self.log_agent("已请求分析分镜。")
+            elif name == "tag_materials":
+                self.start_material_tagging()
+                self.log_agent("已请求素材打标。")
+            elif name == "generate_voiceovers":
+                self.start_voiceover_generation()
+                self.log_agent("已请求生成配音。")
+            elif name == "build_assembly_plan":
+                self.start_assembly_plan()
+                self.log_agent("已请求生成合成计划。")
+            elif name == "save_project":
+                self.save_project(value)
+            elif name == "load_project":
+                if value:
+                    self.load_project(str(Path(value).expanduser()))
+                else:
+                    self.log_agent("加载项目需要提供路径。")
             elif name == "remember":
                 if value:
                     item = app_memory.remember(value)
@@ -904,6 +1450,13 @@ class VideoScriptGUI:
 - remember value:string
 - extract_frames value:string
 - analyze_material value:string
+- transcribe_reference
+- analyze_storyboard
+- tag_materials
+- generate_voiceovers
+- build_assembly_plan
+- save_project value:string 可选
+- load_project value:string
 - start_generation
 - clear_videos
 - clear_memory
@@ -917,7 +1470,7 @@ class VideoScriptGUI:
   ]
 }}
 
-需要确认的动作: start_generation, clear_videos, clear_memory, analyze_material。
+需要确认的动作: start_generation, clear_videos, clear_memory, analyze_material, tag_materials, generate_voiceovers, build_assembly_plan。
 如果无法转换，输出 actions 为空。
 
 当前软件状态:
@@ -940,7 +1493,15 @@ class VideoScriptGUI:
                 self.log_agent("没有解析出可执行动作。")
                 return
 
-            risky = {"start_generation", "clear_videos", "clear_memory", "analyze_material"}
+            risky = {
+                "start_generation",
+                "clear_videos",
+                "clear_memory",
+                "analyze_material",
+                "tag_materials",
+                "generate_voiceovers",
+                "build_assembly_plan",
+            }
             requires_confirmation = bool(plan.get("requires_confirmation")) or any(
                 action.get("action") in risky for action in actions
             )
