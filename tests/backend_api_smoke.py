@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+import backend.workflow_api as workflow_api
 from backend.jobs import JobManager
 from backend.server import create_server
 from production_schema import AssemblyItem, AssemblyPlan
@@ -93,6 +94,28 @@ class FakeAssemblyRenderer:
         return ["ffmpeg", "-y", "-i", "asset.mp4", output_path]
 
 
+class FakeAIRewriter:
+    def rewrite_with_prompt(self, prompt):
+        assert "后端转写文本" in prompt
+        return "这是后端服务化旧流程改写结果"
+
+
+class FakeTitleGenerator:
+    def generate_titles_from_transcript(self, transcript_text, count=5):
+        assert "后端转写文本" in transcript_text
+        return ["后端标题一", "后端标题二"]
+
+
+def fake_transcribe_video(video_path, output_dir, model_size):
+    return {
+        "ok": True,
+        "video": video_path,
+        "video_name": Path(video_path).stem,
+        "audio_path": str(Path(output_dir) / "fake.wav"),
+        "transcript": f"后端转写文本: {Path(video_path).name} / {model_size}",
+    }
+
+
 def request_json(base_url, method, path, payload=None):
     data = None
     headers = {}
@@ -132,6 +155,13 @@ def test_job_manager_reports_failures():
 
 def test_backend_http_workflow_chain():
     with tempfile.TemporaryDirectory() as tmpdir:
+        original_transcribe_video = workflow_api.transcribe_video
+        original_ai_rewriter = workflow_api.AIRewriter
+        original_title_generator = workflow_api.TitleGenerator
+        workflow_api.transcribe_video = fake_transcribe_video
+        workflow_api.AIRewriter = FakeAIRewriter
+        workflow_api.TitleGenerator = FakeTitleGenerator
+
         server = create_server(port=0, projects_dir=tmpdir, run_inline_jobs=True, quiet=True)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -153,6 +183,23 @@ def test_backend_http_workflow_chain():
             state.tts_client = FakeTTSClient()
             state.assembly_planner = FakeAssemblyPlanner()
             state.assembly_renderer = FakeAssemblyRenderer()
+
+            status, payload = request_json(
+                base_url,
+                "POST",
+                f"/projects/{project_id}/reference/transcribe",
+                {
+                    "videos": ["/tmp/reference.mp4"],
+                    "model_size": "tiny",
+                    "product_name": "杜亚智能窗帘",
+                    "keywords": ["智能", "安静"],
+                    "output_dir": str(Path(tmpdir) / "transcripts"),
+                },
+            )
+            assert status == 202, payload
+            reference_job = assert_succeeded_job(base_url, payload)
+            assert reference_job["result"]["status"]["has_reference"] is True
+            assert "后端转写文本" in reference_job["result"]["reference_text"]
 
             status, payload = request_json(
                 base_url,
@@ -207,6 +254,28 @@ def test_backend_http_workflow_chain():
             assembly_job = assert_succeeded_job(base_url, payload)
             assert assembly_job["result"]["status"]["has_assembly_plan"] is True
 
+            status, payload = request_json(
+                base_url,
+                "POST",
+                f"/projects/{project_id}/legacy/generate",
+                {
+                    "videos": ["/tmp/legacy.mp4"],
+                    "output_dir": str(Path(tmpdir) / "legacy"),
+                    "model_size": "tiny",
+                    "product_name": "测试产品",
+                    "selling_points": "稳定、好用",
+                    "requirements": "口语化",
+                    "enable_cleaning": False,
+                    "enable_titles": True,
+                },
+            )
+            assert status == 202, payload
+            legacy_job = assert_succeeded_job(base_url, payload)
+            output = legacy_job["result"]["outputs"][0]
+            assert "后端转写文本" in output["transcript"]
+            assert "旧流程改写结果" in output["rewrite"]
+            assert output["titles"] == ["后端标题一", "后端标题二"]
+
             status, payload = request_json(base_url, "GET", f"/projects/{project_id}/status")
             assert status == 200
             assert payload["has_reference"] is True
@@ -227,6 +296,9 @@ def test_backend_http_workflow_chain():
             server.shutdown()
             server.server_close()
             thread.join(timeout=5)
+            workflow_api.transcribe_video = original_transcribe_video
+            workflow_api.AIRewriter = original_ai_rewriter
+            workflow_api.TitleGenerator = original_title_generator
 
 
 def main():
