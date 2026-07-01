@@ -29,8 +29,19 @@ from text_cleaner import TextCleaner
 from title_generator import TitleGenerator
 
 
-FONT_FAMILY = getattr(config, "UI_FONT_FAMILY", "Arial")
+FONT_FAMILY = getattr(config, "UI_FONT_FAMILY", "SF Pro Text" if sys.platform == "darwin" else "Arial")
 VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov", ".mkv", ".wmv", ".flv", ".webm")
+
+WINDOW_BG = "#f5f5f7"
+PANEL_BG = "#ffffff"
+PANEL_ALT_BG = "#fbfbfd"
+TEXT_BG = "#ffffff"
+TEXT_FG = "#1d1d1f"
+MUTED_FG = "#6e6e73"
+ACCENT = "#007aff"
+BORDER = "#d2d2d7"
+DROP_BG = "#f2f7ff"
+DROP_BORDER = "#a9c7ff"
 
 
 class VideoScriptGUI:
@@ -39,6 +50,7 @@ class VideoScriptGUI:
         self.root.title("短视频文案生成工具")
         self.root.geometry("1420x940")
         self.root.resizable(True, True)
+        self.root.configure(bg=WINDOW_BG)
         self.main_thread = threading.current_thread()
 
         self.video_queue = []
@@ -55,22 +67,42 @@ class VideoScriptGUI:
 
     def setup_styles(self):
         style = ttk.Style()
-        style.theme_use("clam")
-        style.configure("Title.TLabel", font=(FONT_FAMILY, 16, "bold"), foreground="#2c3e50")
-        style.configure("Info.TLabel", font=(FONT_FAMILY, 10), foreground="#34495e")
-        style.configure("Primary.TButton", font=(FONT_FAMILY, 10), padding=8)
-        style.configure("Secondary.TButton", font=(FONT_FAMILY, 9))
+        theme_names = set(style.theme_names())
+        if sys.platform == "darwin" and "aqua" in theme_names:
+            style.theme_use("aqua")
+        elif "clam" in theme_names:
+            style.theme_use("clam")
+
+        style.configure(".", font=(FONT_FAMILY, 10))
+        style.configure("TFrame", background=WINDOW_BG)
+        style.configure("Panel.TFrame", background=PANEL_BG)
+        style.configure("TLabel", background=WINDOW_BG, foreground=TEXT_FG)
+        style.configure("Title.TLabel", font=(FONT_FAMILY, 20, "bold"), foreground=TEXT_FG, background=WINDOW_BG)
+        style.configure("Info.TLabel", font=(FONT_FAMILY, 10), foreground=MUTED_FG, background=WINDOW_BG)
+        style.configure("Field.TLabel", font=(FONT_FAMILY, 10), foreground=MUTED_FG, background=WINDOW_BG)
+        style.configure("TLabelframe", background=WINDOW_BG, bordercolor=BORDER, relief="solid")
+        style.configure("TLabelframe.Label", background=WINDOW_BG, foreground=MUTED_FG, font=(FONT_FAMILY, 10, "bold"))
+        style.configure("TNotebook", background=WINDOW_BG, borderwidth=0)
+        style.configure("TNotebook.Tab", font=(FONT_FAMILY, 10), padding=(16, 9))
+        style.configure("TEntry", padding=(8, 5), foreground=TEXT_FG, fieldbackground=PANEL_BG)
+        style.configure("TCheckbutton", background=WINDOW_BG, foreground=TEXT_FG)
+        style.configure("TRadiobutton", background=WINDOW_BG, foreground=TEXT_FG)
+        style.configure("Horizontal.TProgressbar", background=ACCENT, troughcolor="#e5e5ea", borderwidth=0)
+        style.configure("Primary.TButton", font=(FONT_FAMILY, 10, "bold"), padding=(14, 8))
+        style.configure("Secondary.TButton", font=(FONT_FAMILY, 10), padding=(12, 7))
+        style.map("Primary.TButton", foreground=[("disabled", MUTED_FG), ("!disabled", ACCENT)])
+        style.map("Secondary.TButton", foreground=[("disabled", MUTED_FG), ("!disabled", TEXT_FG)])
 
     def create_widgets(self):
         paned = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
         paned.pack(fill=tk.BOTH, expand=True)
 
-        main_frame = ttk.Frame(paned, padding="14")
-        agent_frame = ttk.Frame(paned, padding=(0, 14, 14, 14))
+        main_frame = ttk.Frame(paned, padding="18")
+        agent_frame = ttk.Frame(paned, padding=(0, 18, 18, 18))
         paned.add(main_frame, weight=4)
         paned.add(agent_frame, weight=1)
 
-        ttk.Label(main_frame, text="短视频工作流", style="Title.TLabel").pack(anchor=tk.W, pady=(0, 10))
+        ttk.Label(main_frame, text="短视频工作流", style="Title.TLabel").pack(anchor=tk.W, pady=(0, 14))
 
         self.create_common_settings(main_frame)
         self.create_workflow_tabs(main_frame)
@@ -80,12 +112,12 @@ class VideoScriptGUI:
         self.workflow_notebook = ttk.Notebook(parent)
         self.workflow_notebook.pack(fill=tk.BOTH, expand=True)
 
-        reference_tab = ttk.Frame(self.workflow_notebook, padding="10")
-        storyboard_tab = ttk.Frame(self.workflow_notebook, padding="10")
-        material_tab = ttk.Frame(self.workflow_notebook, padding="10")
-        voiceover_tab = ttk.Frame(self.workflow_notebook, padding="10")
-        assembly_tab = ttk.Frame(self.workflow_notebook, padding="10")
-        results_tab = ttk.Frame(self.workflow_notebook, padding="10")
+        reference_tab = ttk.Frame(self.workflow_notebook, padding="14")
+        storyboard_tab = ttk.Frame(self.workflow_notebook, padding="14")
+        material_tab = ttk.Frame(self.workflow_notebook, padding="14")
+        voiceover_tab = ttk.Frame(self.workflow_notebook, padding="14")
+        assembly_tab = ttk.Frame(self.workflow_notebook, padding="14")
+        results_tab = ttk.Frame(self.workflow_notebook, padding="14")
 
         self.workflow_notebook.add(reference_tab, text="参考转写")
         self.workflow_notebook.add(storyboard_tab, text="分镜分析")
@@ -113,22 +145,13 @@ class VideoScriptGUI:
         right.columnconfigure(1, weight=1)
         right.rowconfigure(7, weight=1)
 
-        self.drop_frame = tk.Frame(left, bg="#e8f4fc", height=110, highlightthickness=1, highlightbackground="#8ab4d6")
-        self.drop_frame.pack(fill=tk.X, pady=(0, 8))
-        self.drop_frame.pack_propagate(False)
         drop_text = "拖拽视频文件到这里"
         if not DND_FILES:
             drop_text = "拖拽依赖未安装，可使用添加按钮"
-        self.drop_label = tk.Label(
-            self.drop_frame,
-            text=drop_text,
-            bg="#e8f4fc",
-            fg="#2563eb",
-            font=(FONT_FAMILY, 12, "bold"),
-        )
-        self.drop_label.pack(expand=True)
+        self.create_drop_zone(left, drop_text, height=110)
 
         self.video_listbox = tk.Listbox(left, height=10, font=(FONT_FAMILY, 10))
+        self.style_listbox(self.video_listbox)
         self.video_listbox.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
 
         video_buttons = ttk.Frame(left)
@@ -149,6 +172,7 @@ class VideoScriptGUI:
 
         ttk.Label(right, text="改写要求:").grid(row=2, column=0, sticky=tk.NW, pady=4)
         self.requirements_text = scrolledtext.ScrolledText(right, height=4, wrap=tk.WORD, font=(FONT_FAMILY, 10))
+        self.style_text_widget(self.requirements_text)
         self.requirements_text.grid(row=2, column=1, sticky="ew", padx=8, pady=4)
         self.requirements_text.insert(tk.END, "保留核心信息；更口语化；适合短视频口播；控制在300字以内")
 
@@ -189,6 +213,7 @@ class VideoScriptGUI:
 
         ttk.Label(right, text="参考文案:").grid(row=7, column=0, sticky=tk.NW, pady=4)
         self.reference_text = scrolledtext.ScrolledText(right, height=11, wrap=tk.WORD, font=(FONT_FAMILY, 10))
+        self.style_text_widget(self.reference_text)
         self.reference_text.grid(row=7, column=1, sticky="nsew", padx=8, pady=4)
 
     def create_storyboard_page(self, parent):
@@ -251,6 +276,7 @@ class VideoScriptGUI:
         frame.pack(fill=tk.BOTH, expand=True)
 
         self.agent_output = scrolledtext.ScrolledText(frame, height=28, wrap=tk.WORD, font=(FONT_FAMILY, 10))
+        self.style_text_widget(self.agent_output)
         self.agent_output.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
 
         input_row = ttk.Frame(frame)
@@ -304,22 +330,13 @@ class VideoScriptGUI:
         frame.columnconfigure(0, weight=2)
         frame.columnconfigure(1, weight=3)
 
-        self.drop_frame = tk.Frame(left, bg="#e8f4fc", height=96, highlightthickness=1, highlightbackground="#8ab4d6")
-        self.drop_frame.pack(fill=tk.X, pady=(0, 8))
-        self.drop_frame.pack_propagate(False)
         drop_text = "拖拽视频文件到这里"
         if not DND_FILES:
             drop_text = "拖拽依赖未安装，可先使用浏览按钮添加视频"
-        self.drop_label = tk.Label(
-            self.drop_frame,
-            text=drop_text,
-            bg="#e8f4fc",
-            fg="#2563eb",
-            font=(FONT_FAMILY, 12, "bold"),
-        )
-        self.drop_label.pack(expand=True)
+        self.create_drop_zone(left, drop_text, height=96)
 
         self.video_listbox = tk.Listbox(left, height=7, font=(FONT_FAMILY, 10))
+        self.style_listbox(self.video_listbox)
         self.video_listbox.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
 
         video_buttons = ttk.Frame(left)
@@ -340,6 +357,7 @@ class VideoScriptGUI:
 
         ttk.Label(right, text="改写要求:").grid(row=2, column=0, sticky=tk.NW, pady=4)
         self.requirements_text = scrolledtext.ScrolledText(right, height=4, wrap=tk.WORD, font=(FONT_FAMILY, 10))
+        self.style_text_widget(self.requirements_text)
         self.requirements_text.grid(row=2, column=1, sticky="ew", padx=8, pady=4)
         self.requirements_text.insert(tk.END, "保留核心信息；更口语化；适合短视频口播；控制在300字以内")
 
@@ -814,8 +832,63 @@ class VideoScriptGUI:
         self.video_listbox.delete(0, tk.END)
         self.video_queue.clear()
 
+    def create_drop_zone(self, parent, text, height):
+        self.drop_frame = tk.Frame(
+            parent,
+            bg=DROP_BG,
+            height=height,
+            highlightthickness=1,
+            highlightbackground=DROP_BORDER,
+            highlightcolor=ACCENT,
+            bd=0,
+        )
+        self.drop_frame.pack(fill=tk.X, pady=(0, 10))
+        self.drop_frame.pack_propagate(False)
+        self.drop_label = tk.Label(
+            self.drop_frame,
+            text=text,
+            bg=DROP_BG,
+            fg=ACCENT,
+            font=(FONT_FAMILY, 13, "bold"),
+        )
+        self.drop_label.pack(expand=True)
+
+    def style_listbox(self, listbox):
+        listbox.configure(
+            bg=PANEL_BG,
+            fg=TEXT_FG,
+            selectbackground=ACCENT,
+            selectforeground="#ffffff",
+            highlightthickness=1,
+            highlightbackground=BORDER,
+            highlightcolor=ACCENT,
+            relief=tk.FLAT,
+            bd=0,
+            activestyle="none",
+            exportselection=False,
+        )
+
+    def style_text_widget(self, text):
+        text.configure(
+            bg=TEXT_BG,
+            fg=TEXT_FG,
+            insertbackground=TEXT_FG,
+            selectbackground=ACCENT,
+            selectforeground="#ffffff",
+            relief=tk.FLAT,
+            bd=0,
+            highlightthickness=1,
+            highlightbackground=BORDER,
+            highlightcolor=ACCENT,
+            padx=10,
+            pady=8,
+            spacing1=2,
+            spacing3=4,
+        )
+
     def make_text_area(self, parent, height):
         text = scrolledtext.ScrolledText(parent, height=height, wrap=tk.WORD, font=(FONT_FAMILY, 10))
+        self.style_text_widget(text)
         text.pack(fill=tk.BOTH, expand=True)
         return text
 
