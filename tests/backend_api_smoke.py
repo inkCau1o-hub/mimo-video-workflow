@@ -131,6 +131,12 @@ def request_json(base_url, method, path, payload=None):
         return exc.code, json.loads(body) if body else {}
 
 
+def request_with_origin(base_url, path, origin):
+    request = urllib.request.Request(f"{base_url}{path}", headers={"Origin": origin}, method="GET")
+    with urllib.request.urlopen(request, timeout=10) as response:
+        return response.status, response.headers.get("Access-Control-Allow-Origin")
+
+
 def assert_succeeded_job(base_url, job_payload):
     job = job_payload["job"]
     status, payload = request_json(base_url, "GET", f"/jobs/{job['job_id']}")
@@ -172,6 +178,9 @@ def test_backend_http_workflow_chain():
             status, health = request_json(base_url, "GET", "/health")
             assert status == 200
             assert health["ok"] is True
+            status, allow_origin = request_with_origin(base_url, "/health", "http://127.0.0.1:5173")
+            assert status == 200
+            assert allow_origin == "http://127.0.0.1:5173"
 
             status, project_payload = request_json(base_url, "POST", "/projects", {"name": "服务化测试"})
             assert status == 201, project_payload

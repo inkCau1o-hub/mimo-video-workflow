@@ -5,7 +5,7 @@ import json
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Callable, Dict, Mapping, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlparse
 
 from .project_store import ProjectStore
@@ -109,8 +109,16 @@ class WorkflowRequestHandler(BaseHTTPRequestHandler):
         return data
 
     def _write_headers(self, content_length: Optional[int] = None) -> None:
+        origin = self.headers.get("Origin", "")
+        allowed_origins = {
+            "http://127.0.0.1:5173",
+            "http://localhost:5173",
+        }
         self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Access-Control-Allow-Origin", "http://localhost:5173")
+        self.send_header(
+            "Access-Control-Allow-Origin",
+            origin if origin in allowed_origins else "http://127.0.0.1:5173",
+        )
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         if content_length is not None:
