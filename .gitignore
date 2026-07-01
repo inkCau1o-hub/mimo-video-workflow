@@ -47,3 +47,5 @@ env/
 # Editor and OS metadata
 .vscode/
 .idea/
+node_modules/
+apps/desktop/dist/
