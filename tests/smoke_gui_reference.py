@@ -39,6 +39,8 @@ def test_reference_button_dispatches_with_visible_feedback():
 
     try:
         app.add_video_path(TEST_VIDEO)
+        assert app.reference_video_queue == [TEST_VIDEO]
+        assert app.material_video_queue == []
         with patch("gui.threading.Thread", side_effect=fake_thread):
             app.reference_transcribe_button.invoke()
             root.update_idletasks()
@@ -49,6 +51,32 @@ def test_reference_button_dispatches_with_visible_feedback():
         assert app.reference_transcribe_button.instate(["disabled"])
         assert app.stop_button.instate(["!disabled"])
         assert "转写参考任务已启动" in app.get_text(app.log_text)
+    finally:
+        root.destroy()
+
+
+def test_reference_and_material_queues_are_independent():
+    root, app = build_app()
+
+    try:
+        material_event = type("DropEvent", (), {})()
+        material_event.data = root.tk.call("list", TEST_VIDEO)
+        app.handle_drop(material_event, target="material")
+        assert app.material_video_queue == [TEST_VIDEO]
+        assert app.reference_video_queue == []
+        assert app.material_video_listbox.size() == 1
+        assert app.reference_video_listbox.size() == 0
+
+        app.add_video_path(TEST_VIDEO, target="reference")
+        assert app.reference_video_queue == [TEST_VIDEO]
+        assert app.material_video_queue == [TEST_VIDEO]
+
+        app.clear_reference_videos()
+        assert app.reference_video_queue == []
+        assert app.material_video_queue == [TEST_VIDEO]
+
+        app.clear_material_videos()
+        assert app.material_video_queue == []
     finally:
         root.destroy()
 
@@ -177,6 +205,7 @@ def test_generation_worker_uses_subprocess_transcription_path():
 
 def main():
     test_reference_button_dispatches_with_visible_feedback()
+    test_reference_and_material_queues_are_independent()
     test_reference_worker_writes_backend_result_to_project_state()
     test_flow_button_bar_wraps_without_shrinking_buttons()
     test_agent_storyboard_action_runs_once()

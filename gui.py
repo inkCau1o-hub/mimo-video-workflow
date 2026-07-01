@@ -113,7 +113,9 @@ class VideoScriptGUI:
         self.root.configure(bg=WINDOW_BG)
         self.main_thread = threading.current_thread()
 
-        self.video_queue = []
+        self.reference_video_queue = []
+        self.material_video_queue = []
+        self.video_queue = self.reference_video_queue
         self.is_running = False
         self.output_dir = config.OUTPUT_DIR
         self.vision_model = config.VISION_API_MODEL
@@ -121,6 +123,7 @@ class VideoScriptGUI:
         self.workflow = WorkflowState(output_dir=self.output_dir)
         self.settings_visible = False
         self.ui_queue = queue.Queue()
+        self.drop_targets = []
 
         self.setup_styles()
         self.create_widgets()
@@ -233,21 +236,23 @@ class VideoScriptGUI:
         right.columnconfigure(1, weight=1)
         right.rowconfigure(7, weight=1)
 
-        drop_text = "拖拽视频文件到这里"
+        drop_text = "拖拽参考视频到这里"
         if not DND_FILES:
             drop_text = "拖拽依赖未安装，可使用添加按钮"
-        self.create_drop_zone(left, drop_text, height=110)
+        self.create_drop_zone(left, drop_text, height=110, target="reference")
 
-        self.video_listbox = tk.Listbox(left, height=10, font=(FONT_FAMILY, 10))
-        self.style_listbox(self.video_listbox)
-        self.video_listbox.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
+        self.reference_video_listbox = tk.Listbox(left, height=10, font=(FONT_FAMILY, 10))
+        self.video_listbox = self.reference_video_listbox
+        self.style_listbox(self.reference_video_listbox)
+        self.reference_video_listbox.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
+        self.drop_targets.append((self.reference_video_listbox, "reference"))
 
         video_buttons = self.make_button_bar(left)
         video_buttons.pack(fill=tk.X)
-        video_buttons.add_button("添加文件...", self.add_videos, width=12)
-        video_buttons.add_button("添加文件夹...", self.add_folder, width=13)
-        video_buttons.add_button("删除选中", self.remove_selected_video, width=10)
-        video_buttons.add_button("清空", self.clear_videos, width=8)
+        video_buttons.add_button("添加参考视频...", self.add_reference_videos, width=14)
+        video_buttons.add_button("添加参考文件夹...", self.add_reference_folder, width=16)
+        video_buttons.add_button("删除参考", self.remove_selected_reference_video, width=10)
+        video_buttons.add_button("清空参考", self.clear_reference_videos, width=10)
 
         ttk.Label(right, text="产品名称:", style="Field.TLabel").grid(row=0, column=0, sticky=tk.W, pady=5)
         self.product_entry = ttk.Entry(right, width=34, font=(FONT_FAMILY, 10))
@@ -333,13 +338,39 @@ class VideoScriptGUI:
         self.storyboard_json_output = self.make_text_area(json_frame, height=18)
 
     def create_material_page(self, parent):
-        parent.columnconfigure(0, weight=1)
-        parent.rowconfigure(1, weight=1)
-        controls = self.make_button_bar(parent)
+        parent.columnconfigure(0, weight=2)
+        parent.columnconfigure(1, weight=3)
+        parent.rowconfigure(0, weight=1)
+
+        left = ttk.Frame(parent)
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
+        right = ttk.Frame(parent)
+        right.grid(row=0, column=1, sticky="nsew")
+        right.columnconfigure(0, weight=1)
+        right.rowconfigure(1, weight=1)
+
+        drop_text = "拖拽素材视频到这里"
+        if not DND_FILES:
+            drop_text = "拖拽依赖未安装，可使用添加按钮"
+        self.create_drop_zone(left, drop_text, height=110, target="material")
+
+        self.material_video_listbox = tk.Listbox(left, height=10, font=(FONT_FAMILY, 10))
+        self.style_listbox(self.material_video_listbox)
+        self.material_video_listbox.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
+        self.drop_targets.append((self.material_video_listbox, "material"))
+
+        video_buttons = self.make_button_bar(left)
+        video_buttons.pack(fill=tk.X)
+        video_buttons.add_button("添加素材视频...", self.add_material_videos, width=14)
+        video_buttons.add_button("添加素材文件夹...", self.add_material_folder, width=16)
+        video_buttons.add_button("删除素材", self.remove_selected_material_video, width=10)
+        video_buttons.add_button("清空素材", self.clear_material_videos, width=10)
+
+        controls = self.make_button_bar(right)
         controls.grid(row=0, column=0, sticky="ew", pady=(0, 12))
-        controls.add_button("打标当前视频列表", self.confirm_material_tagging, style="Primary.TButton", width=16)
+        controls.add_button("打标素材列表", self.confirm_material_tagging, style="Primary.TButton", width=14)
         controls.add_button("刷新摘要", self.refresh_material_output, width=10)
-        output_frame = ttk.Frame(parent)
+        output_frame = ttk.Frame(right)
         output_frame.grid(row=1, column=0, sticky="nsew")
         self.material_output = self.make_text_area(output_frame, height=22)
 
@@ -457,21 +488,23 @@ class VideoScriptGUI:
         frame.columnconfigure(0, weight=2)
         frame.columnconfigure(1, weight=3)
 
-        drop_text = "拖拽视频文件到这里"
+        drop_text = "拖拽参考视频到这里"
         if not DND_FILES:
             drop_text = "拖拽依赖未安装，可先使用浏览按钮添加视频"
-        self.create_drop_zone(left, drop_text, height=96)
+        self.create_drop_zone(left, drop_text, height=96, target="reference")
 
-        self.video_listbox = tk.Listbox(left, height=7, font=(FONT_FAMILY, 10))
-        self.style_listbox(self.video_listbox)
-        self.video_listbox.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
+        self.reference_video_listbox = tk.Listbox(left, height=7, font=(FONT_FAMILY, 10))
+        self.video_listbox = self.reference_video_listbox
+        self.style_listbox(self.reference_video_listbox)
+        self.reference_video_listbox.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
+        self.drop_targets.append((self.reference_video_listbox, "reference"))
 
         video_buttons = self.make_button_bar(left)
         video_buttons.pack(fill=tk.X)
-        video_buttons.add_button("添加文件...", self.add_videos, width=12)
-        video_buttons.add_button("添加文件夹...", self.add_folder, width=13)
+        video_buttons.add_button("添加参考视频...", self.add_reference_videos, width=14)
+        video_buttons.add_button("添加参考文件夹...", self.add_reference_folder, width=16)
         video_buttons.add_button("删除选中", self.remove_selected_video, width=10)
-        video_buttons.add_button("清空", self.clear_videos, width=8)
+        video_buttons.add_button("清空参考", self.clear_reference_videos, width=10)
 
         ttk.Label(right, text="产品名称:", style="Field.TLabel").grid(row=0, column=0, sticky=tk.W, pady=5)
         self.product_entry = ttk.Entry(right, width=34, font=(FONT_FAMILY, 10))
@@ -541,18 +574,18 @@ class VideoScriptGUI:
         if not DND_FILES:
             return
         try:
-            for widget in (self.drop_frame, self.drop_label, self.video_listbox):
+            for widget, target in self.drop_targets:
                 widget.drop_target_register(DND_FILES)
-                widget.dnd_bind("<<Drop>>", self.handle_drop)
+                widget.dnd_bind("<<Drop>>", lambda event, queue_target=target: self.handle_drop(event, queue_target))
         except tk.TclError:
             self.log("拖拽组件未就绪，可使用添加按钮导入视频。")
 
-    def handle_drop(self, event):
+    def handle_drop(self, event, target="reference"):
         try:
             paths = self.root.tk.splitlist(event.data)
         except Exception:
             paths = event.data.split()
-        self.add_paths(paths)
+        self.add_paths(paths, target=target)
 
     def browse_output_dir(self):
         dirname = filedialog.askdirectory(title="选择输出文件夹")
@@ -682,12 +715,12 @@ class VideoScriptGUI:
         self.log_agent(f"项目已加载: {path}")
 
     def start_reference_transcription(self):
-        if not self.video_queue:
+        if not self.reference_video_queue:
             self.set_status("请先添加视频文件")
-            self.log("转写参考未启动：请先添加视频文件。")
-            messagebox.showwarning("提示", "请先添加视频文件")
+            self.log("转写参考未启动：请先添加参考视频。")
+            messagebox.showwarning("提示", "请先添加参考视频")
             return
-        missing_videos = [path for path in self.video_queue if not os.path.exists(path)]
+        missing_videos = [path for path in self.reference_video_queue if not os.path.exists(path)]
         if missing_videos:
             message = f"视频文件不存在: {missing_videos[0]}"
             self.set_status("视频文件不存在")
@@ -695,7 +728,7 @@ class VideoScriptGUI:
             messagebox.showwarning("提示", message)
             return
         task = {
-            "videos": list(self.video_queue),
+            "videos": list(self.reference_video_queue),
             "output_dir": self.refresh_output_dir(),
             "model_size": self.model_var.get(),
         }
@@ -834,18 +867,21 @@ class VideoScriptGUI:
             self.set_status("就绪")
 
     def confirm_material_tagging(self):
-        if not self.video_queue:
+        if not self.material_video_queue:
             messagebox.showwarning("提示", "请先添加素材视频")
             return
-        if not messagebox.askyesno("确认", "将调用视觉模型分析当前视频列表，是否继续？"):
+        if not messagebox.askyesno("确认", "将调用视觉模型分析素材视频列表，是否继续？"):
             return
         self.start_material_tagging()
 
     def start_material_tagging(self):
         try:
+            if not self.material_video_queue:
+                messagebox.showwarning("提示", "请先添加素材视频")
+                return
             self.apply_api_settings(require_key=True)
             output_dir = self.refresh_output_dir()
-            videos = list(self.video_queue)
+            videos = list(self.material_video_queue)
             vision_model = self.vision_model or config.VISION_API_MODEL
             threading.Thread(
                 target=self.material_tagging_worker,
@@ -978,20 +1014,32 @@ class VideoScriptGUI:
             return " ".join(str(part) for part in command)
         return str(command or "")
 
-    def add_videos(self):
+    def add_reference_videos(self):
+        self.add_videos(target="reference")
+
+    def add_material_videos(self):
+        self.add_videos(target="material")
+
+    def add_reference_folder(self):
+        self.add_folder(target="reference")
+
+    def add_material_folder(self):
+        self.add_folder(target="material")
+
+    def add_videos(self, target="reference"):
         filenames = filedialog.askopenfilename(
             title="选择视频文件",
             filetypes=[("视频文件", "*.mp4 *.avi *.mov *.mkv *.wmv *.flv *.webm"), ("所有文件", "*.*")],
             multiple=True,
         )
-        self.add_paths(filenames)
+        self.add_paths(filenames, target=target)
 
-    def add_folder(self):
+    def add_folder(self, target="reference"):
         dirname = filedialog.askdirectory(title="选择文件夹")
         if dirname:
-            self.add_paths([dirname])
+            self.add_paths([dirname], target=target)
 
-    def add_paths(self, paths):
+    def add_paths(self, paths, target="reference"):
         added = 0
         for raw_path in paths:
             path = os.path.abspath(str(raw_path))
@@ -999,37 +1047,65 @@ class VideoScriptGUI:
                 for root, _, filenames in os.walk(path):
                     for filename in filenames:
                         if filename.lower().endswith(VIDEO_EXTENSIONS):
-                            if self.add_video_path(os.path.join(root, filename)):
+                            if self.add_video_path(os.path.join(root, filename), target=target):
                                 added += 1
             elif path.lower().endswith(VIDEO_EXTENSIONS):
-                if self.add_video_path(path):
+                if self.add_video_path(path, target=target):
                     added += 1
+        label = self.video_target_label(target)
         if added:
-            self.log(f"已添加 {added} 个视频")
+            self.log(f"已添加 {added} 个{label}视频")
         elif paths:
             self.log("未找到可用视频文件")
 
-    def add_video_path(self, path):
-        if path in self.video_queue:
+    def video_target_label(self, target):
+        return "素材" if target == "material" else "参考"
+
+    def queue_for_target(self, target):
+        return self.material_video_queue if target == "material" else self.reference_video_queue
+
+    def listbox_for_target(self, target):
+        return self.material_video_listbox if target == "material" else self.reference_video_listbox
+
+    def add_video_path(self, path, target="reference"):
+        queue_for_target = self.queue_for_target(target)
+        if path in queue_for_target:
             return False
-        self.video_queue.append(path)
-        self.video_listbox.insert(tk.END, os.path.basename(path))
+        queue_for_target.append(path)
+        self.listbox_for_target(target).insert(tk.END, os.path.basename(path))
         return True
 
-    def remove_selected_video(self):
-        selection = self.video_listbox.curselection()
+    def remove_selected_reference_video(self):
+        self.remove_selected_video(target="reference")
+
+    def remove_selected_material_video(self):
+        self.remove_selected_video(target="material")
+
+    def remove_selected_video(self, target="reference"):
+        listbox = self.listbox_for_target(target)
+        selection = listbox.curselection()
         if not selection:
             return
         index = selection[0]
-        self.video_listbox.delete(index)
-        self.video_queue.pop(index)
+        listbox.delete(index)
+        self.queue_for_target(target).pop(index)
 
-    def clear_videos(self):
-        self.video_listbox.delete(0, tk.END)
-        self.video_queue.clear()
+    def clear_reference_videos(self):
+        self.clear_videos(target="reference")
 
-    def create_drop_zone(self, parent, text, height):
-        self.drop_frame = tk.Frame(
+    def clear_material_videos(self):
+        self.clear_videos(target="material")
+
+    def clear_all_videos(self):
+        self.clear_videos(target="reference")
+        self.clear_videos(target="material")
+
+    def clear_videos(self, target="reference"):
+        self.listbox_for_target(target).delete(0, tk.END)
+        self.queue_for_target(target).clear()
+
+    def create_drop_zone(self, parent, text, height, target="reference"):
+        drop_frame = tk.Frame(
             parent,
             bg=DROP_BG,
             height=height,
@@ -1038,16 +1114,18 @@ class VideoScriptGUI:
             highlightcolor=ACCENT,
             bd=0,
         )
-        self.drop_frame.pack(fill=tk.X, pady=(0, 10))
-        self.drop_frame.pack_propagate(False)
-        self.drop_label = tk.Label(
-            self.drop_frame,
+        drop_frame.pack(fill=tk.X, pady=(0, 10))
+        drop_frame.pack_propagate(False)
+        drop_label = tk.Label(
+            drop_frame,
             text=text,
             bg=DROP_BG,
             fg=ACCENT,
             font=(FONT_FAMILY, 13, "bold"),
         )
-        self.drop_label.pack(expand=True)
+        drop_label.pack(expand=True)
+        self.drop_targets.extend([(drop_frame, target), (drop_label, target)])
+        return drop_frame, drop_label
 
     def style_listbox(self, listbox):
         listbox.configure(
@@ -1172,13 +1250,13 @@ class VideoScriptGUI:
             elif normalized in {"开始", "开始生成", "run", "start"}:
                 self.queue_agent_actions(
                     [{"action": "start_generation"}],
-                    "将开始处理当前视频列表。",
+                    "将开始处理参考视频列表中的视频。",
                     require_confirmation=True,
                 )
             elif normalized in {"转写参考", "参考转写", "transcribe reference"}:
                 self.queue_agent_actions(
                     [{"action": "transcribe_reference"}],
-                    "将把当前视频列表转写为参考文案。",
+                    "将把参考视频列表转写为参考文案。",
                     require_confirmation=False,
                 )
             elif normalized in {"分析分镜", "分镜分析", "analyze storyboard"}:
@@ -1216,7 +1294,19 @@ class VideoScriptGUI:
             elif normalized in {"清空", "清空视频", "clear"}:
                 self.queue_agent_actions(
                     [{"action": "clear_videos"}],
-                    "将清空当前视频列表。",
+                    "将清空参考视频和素材视频列表。",
+                    require_confirmation=True,
+                )
+            elif normalized in {"清空参考", "清空参考视频", "clear reference"}:
+                self.queue_agent_actions(
+                    [{"action": "clear_reference_videos"}],
+                    "将清空参考视频列表。",
+                    require_confirmation=True,
+                )
+            elif normalized in {"清空素材", "清空素材视频", "clear materials"}:
+                self.queue_agent_actions(
+                    [{"action": "clear_material_videos"}],
+                    "将清空素材视频列表。",
                     require_confirmation=True,
                 )
             elif normalized in {"保存配置", "save config"}:
@@ -1305,9 +1395,11 @@ class VideoScriptGUI:
                     "  开启标题 / 关闭标题",
                     "  保存原文 / 不保存原文",
                     "  保存清洗文本 / 不保存清洗文本",
-                    "  添加 /path/to/video.mp4",
-                    "  添加文件夹 /path/to/folder",
-                    "  清空视频",
+                    "  添加参考 /path/to/video.mp4",
+                    "  添加素材 /path/to/material.mp4",
+                    "  添加参考文件夹 /path/to/folder",
+                    "  添加素材文件夹 /path/to/folder",
+                    "  清空参考视频 / 清空素材视频 / 清空视频",
                     "  转写参考",
                     "  分析分镜",
                     "  打标素材",
@@ -1409,10 +1501,20 @@ class VideoScriptGUI:
                 self.save_clean_var.set(bool(value))
                 self.log_agent(f"保存清洗文本: {'开' if value else '关'}")
             elif name == "add_path":
-                self.add_paths([value])
+                self.add_paths([value], target="reference")
+            elif name == "add_reference_path":
+                self.add_paths([value], target="reference")
+            elif name == "add_material_path":
+                self.add_paths([value], target="material")
             elif name == "clear_videos":
-                self.clear_videos()
-                self.log_agent("已清空视频列表。")
+                self.clear_all_videos()
+                self.log_agent("已清空参考视频和素材视频列表。")
+            elif name == "clear_reference_videos":
+                self.clear_reference_videos()
+                self.log_agent("已清空参考视频列表。")
+            elif name == "clear_material_videos":
+                self.clear_material_videos()
+                self.log_agent("已清空素材视频列表。")
             elif name == "clear_memory":
                 app_memory.clear_facts()
                 self.log_agent("已清空长期记忆。")
@@ -1457,7 +1559,8 @@ class VideoScriptGUI:
 
     def show_agent_status(self):
         status = [
-            f"视频数量: {len(self.video_queue)}",
+            f"参考视频数量: {len(self.reference_video_queue)}",
+            f"素材视频数量: {len(self.material_video_queue)}",
             f"产品名称: {self.product_entry.get().strip() or '未设置'}",
             f"产品卖点: {self.points_entry.get().strip() or '未设置'}",
             f"Whisper模型: {self.model_var.get()}",
@@ -1652,8 +1755,29 @@ class VideoScriptGUI:
 
     def try_add_command(self, command):
         lowered = command.lower()
-        prefixes = ["添加文件夹", "添加文件", "添加", "add folder", "add file", "add"]
-        for prefix in prefixes:
+        prefixes = [
+            ("添加素材文件夹", "material"),
+            ("添加素材视频", "material"),
+            ("添加素材文件", "material"),
+            ("添加素材", "material"),
+            ("添加参考文件夹", "reference"),
+            ("添加参考视频", "reference"),
+            ("添加参考文件", "reference"),
+            ("添加参考", "reference"),
+            ("add material folder", "material"),
+            ("add material file", "material"),
+            ("add material", "material"),
+            ("add reference folder", "reference"),
+            ("add reference file", "reference"),
+            ("add reference", "reference"),
+            ("添加文件夹", "reference"),
+            ("添加文件", "reference"),
+            ("添加", "reference"),
+            ("add folder", "reference"),
+            ("add file", "reference"),
+            ("add", "reference"),
+        ]
+        for prefix, target in prefixes:
             if not lowered.startswith(prefix.lower()):
                 continue
             value = command[len(prefix):].strip()
@@ -1663,8 +1787,8 @@ class VideoScriptGUI:
                 self.log_agent("请在添加命令后输入文件或文件夹路径。")
                 return True
             paths = self.parse_cli_paths(value)
-            self.add_paths(paths)
-            self.log_agent(f"已尝试添加 {len(paths)} 个路径。")
+            self.add_paths(paths, target=target)
+            self.log_agent(f"已尝试添加 {len(paths)} 个{self.video_target_label(target)}路径。")
             return True
         return False
 
@@ -1685,7 +1809,8 @@ class VideoScriptGUI:
             return
 
         state = {
-            "video_count": len(self.video_queue),
+            "reference_video_count": len(self.reference_video_queue),
+            "material_video_count": len(self.material_video_queue),
             "product_name": self.product_entry.get().strip(),
             "selling_points": self.points_entry.get().strip(),
             "requirements": self.get_text(self.requirements_text),
@@ -1719,7 +1844,9 @@ class VideoScriptGUI:
 - toggle_titles value:boolean
 - toggle_save_transcript value:boolean
 - toggle_save_clean value:boolean
-- add_path value:string
+- add_path value:string 默认添加到参考视频列表，兼容旧命令
+- add_reference_path value:string
+- add_material_path value:string
 - remember value:string
 - extract_frames value:string
 - analyze_material value:string
@@ -1731,7 +1858,9 @@ class VideoScriptGUI:
 - save_project value:string 可选
 - load_project value:string
 - start_generation
-- clear_videos
+- clear_videos 清空参考视频和素材视频列表
+- clear_reference_videos
+- clear_material_videos
 - clear_memory
 
 输出格式:
@@ -1743,7 +1872,7 @@ class VideoScriptGUI:
   ]
 }}
 
-需要确认的动作: start_generation, clear_videos, clear_memory, analyze_material, tag_materials, generate_voiceovers, build_assembly_plan。
+需要确认的动作: start_generation, clear_videos, clear_reference_videos, clear_material_videos, clear_memory, analyze_material, tag_materials, generate_voiceovers, build_assembly_plan。
 如果无法转换，输出 actions 为空。
 
 当前软件状态:
@@ -1769,6 +1898,8 @@ class VideoScriptGUI:
             risky = {
                 "start_generation",
                 "clear_videos",
+                "clear_reference_videos",
+                "clear_material_videos",
                 "clear_memory",
                 "analyze_material",
                 "tag_materials",
@@ -1856,8 +1987,8 @@ class VideoScriptGUI:
         return "".join(ch if ch not in '/\\:*?"<>|' else "_" for ch in name)
 
     def start_generation(self):
-        if not self.video_queue:
-            messagebox.showwarning("提示", "请先添加视频文件")
+        if not self.reference_video_queue:
+            messagebox.showwarning("提示", "请先添加参考视频")
             return
         if not self.product_entry.get().strip():
             messagebox.showwarning("提示", "请输入产品名称")
@@ -1869,7 +2000,7 @@ class VideoScriptGUI:
             return
 
         task = {
-            "videos": list(self.video_queue),
+            "videos": list(self.reference_video_queue),
             "output_dir": self.refresh_output_dir(),
             "model_size": self.model_var.get(),
             "product_name": self.product_entry.get().strip(),
@@ -1883,7 +2014,8 @@ class VideoScriptGUI:
 
         app_memory.update_last_task(
             {
-                "video_count": len(task["videos"]),
+                "reference_video_count": len(self.reference_video_queue),
+                "material_video_count": len(self.material_video_queue),
                 "output_dir": task["output_dir"],
                 "model_size": task["model_size"],
                 "product_name": task["product_name"],

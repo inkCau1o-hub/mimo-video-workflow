@@ -82,15 +82,15 @@ def set_text(text_widget, value):
     text_widget.insert(tk.END, value)
 
 
-def add_video_through_file_dialog(root, video_path):
+def add_video_through_file_dialog(root, video_path, button_text):
     with patch("gui.filedialog.askopenfilename", return_value=(video_path,)):
-        invoke_button(root, "添加文件...")
+        invoke_button(root, button_text)
 
 
-def add_video_through_drop(app, root, video_path):
+def add_video_through_drop(app, root, video_path, target):
     event = type("DropEvent", (), {})()
     event.data = root.tk.call("list", video_path)
-    app.handle_drop(event)
+    app.handle_drop(event, target=target)
     pump(root)
 
 
@@ -150,9 +150,13 @@ def run():
             assert_true(not app.settings_visible, "settings panel did not hide")
             record("settings_toggle", ok=True)
 
-            add_video_through_file_dialog(root, REFERENCE_VIDEO)
-            assert_true(app.video_queue == [REFERENCE_VIDEO], f"reference video not added: {app.video_queue}")
-            record("add_reference_video", video_count=len(app.video_queue))
+            add_video_through_file_dialog(root, REFERENCE_VIDEO, "添加参考视频...")
+            assert_true(
+                app.reference_video_queue == [REFERENCE_VIDEO],
+                f"reference video not added: {app.reference_video_queue}",
+            )
+            assert_true(not app.material_video_queue, "reference add polluted material queue")
+            record("add_reference_video", reference_video_count=len(app.reference_video_queue))
 
             invoke_button(root, "转写参考")
             wait_for(
@@ -176,13 +180,21 @@ def run():
             shot_count = len(app.workflow.storyboard_analysis.shots)
             record("storyboard_analysis", shots=shot_count)
 
-            invoke_button(root, "清空")
-            assert_true(not app.video_queue, "video queue did not clear before material tagging")
-            add_video_through_drop(app, root, MATERIAL_VIDEO)
-            assert_true(app.video_queue == [MATERIAL_VIDEO], f"drop did not add material video: {app.video_queue}")
-            record("drop_material_video", video_count=len(app.video_queue))
+            invoke_button(root, "清空素材")
+            assert_true(not app.material_video_queue, "material queue did not clear before material tagging")
+            add_video_through_drop(app, root, MATERIAL_VIDEO, target="material")
+            assert_true(
+                app.material_video_queue == [MATERIAL_VIDEO],
+                f"drop did not add material video: {app.material_video_queue}",
+            )
+            assert_true(app.reference_video_queue == [REFERENCE_VIDEO], "material drop polluted reference queue")
+            record(
+                "drop_material_video",
+                reference_video_count=len(app.reference_video_queue),
+                material_video_count=len(app.material_video_queue),
+            )
 
-            invoke_button(root, "打标当前视频列表")
+            invoke_button(root, "打标素材列表")
             wait_for(
                 root,
                 lambda: len(app.workflow.material_assets) > 0,
@@ -237,7 +249,8 @@ def run():
 
             app.agent_entry.insert(0, "状态")
             invoke_button(root, "执行")
-            assert_true("视频数量" in app.get_text(app.agent_output), "agent status did not render")
+            assert_true("参考视频数量" in app.get_text(app.agent_output), "agent status did not render reference count")
+            assert_true("素材视频数量" in app.get_text(app.agent_output), "agent status did not render material count")
             app.agent_entry.insert(0, "记住风格 全流程测试: 口语化、短句、明确利益点")
             invoke_button(root, "执行")
             app.agent_entry.insert(0, "查看记忆")
@@ -245,8 +258,8 @@ def run():
             assert_true("全流程测试" in app.get_text(app.agent_output), "agent memory command failed")
             record("agent_console", status=True, memory=True)
 
-            invoke_button(root, "清空")
-            add_video_through_file_dialog(root, REFERENCE_VIDEO)
+            invoke_button(root, "清空参考")
+            add_video_through_file_dialog(root, REFERENCE_VIDEO, "添加参考视频...")
             app.enable_titles_var.set(True)
             app.model_var.set("tiny")
             invoke_button(root, "旧流程生成文案")
