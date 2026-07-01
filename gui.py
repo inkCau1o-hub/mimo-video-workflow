@@ -22,11 +22,9 @@ import config
 import app_memory
 from ai_client import OpenAICompatibleClient
 from ai_rewriter import AIRewriter
-from audio_extractor import AudioExtractor
 import gui_pages
 from media_assembler import FFmpegAssemblyRenderer
 from multimodal_interfaces import MaterialAnalyzer
-from speech_to_text import SpeechToText
 from workflow_state import WorkflowState
 from text_cleaner import TextCleaner
 from title_generator import TitleGenerator
@@ -749,6 +747,9 @@ class VideoScriptGUI:
             self.set_status("就绪")
 
     def transcribe_reference_video(self, video_path, output_dir, model_size):
+        return self.transcribe_video_with_subprocess(video_path, output_dir, model_size)
+
+    def transcribe_video_with_subprocess(self, video_path, output_dir, model_size):
         os.makedirs(output_dir, exist_ok=True)
         result_file = tempfile.NamedTemporaryFile(
             prefix="reference_transcription_",
@@ -1921,14 +1922,11 @@ class VideoScriptGUI:
             self.log(f"\n[{index}/{total}] {os.path.basename(video_path)}")
 
             try:
-                audio_path = AudioExtractor(output_dir=task["output_dir"]).extract_audio(
+                transcript_text = self.transcribe_video_with_subprocess(
                     video_path,
-                    f"audio_{video_name}.wav",
-                )
-                transcript_text = SpeechToText(
-                    model_size=task["model_size"],
                     output_dir=task["output_dir"],
-                ).transcribe(audio_path, language="zh")
+                    model_size=task["model_size"],
+                )
 
                 self.append_text(self.transcript_output, f"\n===== {video_name} =====\n{transcript_text}\n")
                 if task["save_transcript"]:
