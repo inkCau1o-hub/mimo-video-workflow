@@ -43,6 +43,63 @@ ACCENT = "#007aff"
 BORDER = "#d2d2d7"
 DROP_BG = "#f2f7ff"
 DROP_BORDER = "#a9c7ff"
+BUTTON_GAP = 8
+BUTTON_ROW_GAP = 8
+
+
+class FlowButtonBar(ttk.Frame):
+    def __init__(self, parent, gap=BUTTON_GAP, row_gap=BUTTON_ROW_GAP):
+        super().__init__(parent)
+        self.gap = gap
+        self.row_gap = row_gap
+        self.buttons = []
+        self._pending_reflow = False
+        self._last_width = 0
+        self.bind("<Configure>", self._schedule_reflow)
+
+    def add_button(self, text, command, style="Secondary.TButton", width=12, **kwargs):
+        button = ttk.Button(self, text=text, command=command, style=style, width=width, **kwargs)
+        self.buttons.append(button)
+        button.grid(row=0, column=len(self.buttons) - 1, sticky=tk.W, padx=(0, self.gap), pady=(0, 0))
+        self._schedule_reflow()
+        return button
+
+    def _schedule_reflow(self, event=None):
+        if event is not None and getattr(event, "width", 0):
+            self._last_width = event.width
+        if self._pending_reflow:
+            return
+        self._pending_reflow = True
+        self.after_idle(self._reflow)
+
+    def _reflow(self):
+        self._pending_reflow = False
+        if not self.buttons:
+            return
+        available_width = self._last_width or self.winfo_width()
+        if available_width <= 1 and self.master is not None:
+            available_width = self.master.winfo_width()
+        available_width = max(available_width, 1)
+        row = 0
+        column = 0
+        used_width = 0
+
+        for button in self.buttons:
+            button_width = max(button.winfo_reqwidth(), 96)
+            next_width = button_width if column == 0 else used_width + self.gap + button_width
+            if column > 0 and next_width > available_width:
+                row += 1
+                column = 0
+                used_width = 0
+
+            button.grid_configure(
+                row=row,
+                column=column,
+                padx=(0, self.gap),
+                pady=(0, self.row_gap if row < len(self.buttons) - 1 else 0),
+            )
+            used_width = button_width if column == 0 else used_width + self.gap + button_width
+            column += 1
 
 
 class VideoScriptGUI:
@@ -107,6 +164,12 @@ class VideoScriptGUI:
             foreground=[("disabled", MUTED_FG), ("!disabled", TEXT_FG)],
         )
 
+    def make_button(self, parent, text, command, style="Secondary.TButton", width=12, **kwargs):
+        return ttk.Button(parent, text=text, command=command, style=style, width=width, **kwargs)
+
+    def make_button_bar(self, parent):
+        return FlowButtonBar(parent)
+
     def create_widgets(self):
         self.main_paned = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
         self.main_paned.pack(fill=tk.BOTH, expand=True)
@@ -121,7 +184,7 @@ class VideoScriptGUI:
         ttk.Label(header, text="短视频工作流", style="Title.TLabel").pack(side=tk.LEFT)
         self.model_status_label = ttk.Label(header, text="", style="Info.TLabel")
         self.model_status_label.pack(side=tk.RIGHT, padx=(12, 0))
-        self.settings_button = ttk.Button(header, text="显示设置", style="Secondary.TButton", command=self.toggle_common_settings)
+        self.settings_button = self.make_button(header, text="显示设置", style="Secondary.TButton", width=10, command=self.toggle_common_settings)
         self.settings_button.pack(side=tk.RIGHT)
 
         self.create_common_settings(main_frame)
@@ -176,12 +239,12 @@ class VideoScriptGUI:
         self.style_listbox(self.video_listbox)
         self.video_listbox.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
 
-        video_buttons = ttk.Frame(left)
+        video_buttons = self.make_button_bar(left)
         video_buttons.pack(fill=tk.X)
-        ttk.Button(video_buttons, text="添加文件...", style="Secondary.TButton", command=self.add_videos).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(video_buttons, text="添加文件夹...", style="Secondary.TButton", command=self.add_folder).pack(side=tk.LEFT, padx=(3, 0))
-        ttk.Button(video_buttons, text="删除选中", style="Secondary.TButton", command=self.remove_selected_video).pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Button(video_buttons, text="清空", style="Secondary.TButton", command=self.clear_videos).pack(side=tk.LEFT, padx=(8, 0))
+        video_buttons.add_button("添加文件...", self.add_videos, width=12)
+        video_buttons.add_button("添加文件夹...", self.add_folder, width=13)
+        video_buttons.add_button("删除选中", self.remove_selected_video, width=10)
+        video_buttons.add_button("清空", self.clear_videos, width=8)
 
         ttk.Label(right, text="产品名称:", style="Field.TLabel").grid(row=0, column=0, sticky=tk.W, pady=5)
         self.product_entry = ttk.Entry(right, width=34, font=(FONT_FAMILY, 10))
@@ -216,22 +279,23 @@ class VideoScriptGUI:
         ttk.Checkbutton(options, text="保存原文", variable=self.save_transcript_var).pack(side=tk.LEFT, padx=10)
         ttk.Checkbutton(options, text="保存清洗文本", variable=self.save_clean_var).pack(side=tk.LEFT, padx=10)
 
-        action_row = ttk.Frame(right)
-        action_row.grid(row=5, column=1, sticky=tk.EW, padx=10, pady=(8, 8))
-        ttk.Button(action_row, text="转写参考", style="Primary.TButton", command=self.start_reference_transcription).pack(side=tk.LEFT)
-        ttk.Button(action_row, text="使用当前文本", style="Secondary.TButton", command=self.sync_reference_text).pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Button(action_row, text="导入文本", style="Secondary.TButton", command=self.import_reference_text).pack(side=tk.LEFT, padx=(8, 0))
-        self.start_button = ttk.Button(action_row, text="旧流程生成文案", style="Secondary.TButton", command=self.start_generation)
-        self.start_button.pack(side=tk.LEFT, padx=(8, 0))
-        self.stop_button = ttk.Button(action_row, text="停止", style="Secondary.TButton", command=self.stop_generation, state=tk.DISABLED)
-        self.stop_button.pack(side=tk.LEFT, padx=(8, 0))
+        action_area = ttk.Frame(right)
+        action_area.grid(row=5, column=1, sticky=tk.EW, padx=10, pady=(8, 8))
+        action_area.columnconfigure(0, weight=1)
+        action_row = self.make_button_bar(action_area)
+        action_row.grid(row=0, column=0, sticky=tk.EW)
+        action_row.add_button("转写参考", self.start_reference_transcription, style="Primary.TButton", width=12)
+        action_row.add_button("使用当前文本", self.sync_reference_text, width=13)
+        action_row.add_button("导入文本", self.import_reference_text, width=10)
+        self.start_button = action_row.add_button("旧流程生成文案", self.start_generation, width=15)
+        self.stop_button = action_row.add_button("停止", self.stop_generation, width=8, state=tk.DISABLED)
         self.status_var = tk.StringVar(value="就绪")
-        ttk.Label(action_row, textvariable=self.status_var, style="Info.TLabel").pack(side=tk.LEFT, padx=(12, 0))
+        ttk.Label(action_area, textvariable=self.status_var, style="Info.TLabel").grid(row=1, column=0, sticky=tk.W, pady=(4, 0))
 
-        project_row = ttk.Frame(right)
+        project_row = self.make_button_bar(right)
         project_row.grid(row=6, column=1, sticky="ew", padx=10, pady=(0, 8))
-        ttk.Button(project_row, text="保存项目", style="Secondary.TButton", command=self.save_project_dialog).pack(side=tk.LEFT)
-        ttk.Button(project_row, text="加载项目", style="Secondary.TButton", command=self.load_project_dialog).pack(side=tk.LEFT, padx=(8, 0))
+        project_row.add_button("保存项目", self.save_project_dialog, width=10)
+        project_row.add_button("加载项目", self.load_project_dialog, width=10)
 
         ttk.Label(right, text="参考文案:", style="Field.TLabel").grid(row=7, column=0, sticky=tk.NW, pady=5)
         self.reference_text = scrolledtext.ScrolledText(right, height=11, wrap=tk.WORD, font=(FONT_FAMILY, 10))
@@ -249,7 +313,7 @@ class VideoScriptGUI:
         ttk.Label(controls, text="分镜数:", style="Field.TLabel").pack(side=tk.LEFT)
         self.storyboard_count_var = tk.StringVar(value="")
         ttk.Entry(controls, textvariable=self.storyboard_count_var, width=8).pack(side=tk.LEFT, padx=(6, 14))
-        ttk.Button(controls, text="分析分镜", style="Primary.TButton", command=self.start_storyboard_analysis).pack(side=tk.LEFT)
+        self.make_button(controls, text="分析分镜", style="Primary.TButton", width=12, command=self.start_storyboard_analysis).pack(side=tk.LEFT)
 
         split = ttk.PanedWindow(parent, orient=tk.HORIZONTAL)
         split.grid(row=1, column=0, sticky="nsew")
@@ -263,10 +327,10 @@ class VideoScriptGUI:
     def create_material_page(self, parent):
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(1, weight=1)
-        controls = ttk.Frame(parent)
+        controls = self.make_button_bar(parent)
         controls.grid(row=0, column=0, sticky="ew", pady=(0, 12))
-        ttk.Button(controls, text="打标当前视频列表", style="Primary.TButton", command=self.confirm_material_tagging).pack(side=tk.LEFT)
-        ttk.Button(controls, text="刷新摘要", style="Secondary.TButton", command=self.refresh_material_output).pack(side=tk.LEFT, padx=(8, 0))
+        controls.add_button("打标当前视频列表", self.confirm_material_tagging, style="Primary.TButton", width=16)
+        controls.add_button("刷新摘要", self.refresh_material_output, width=10)
         output_frame = ttk.Frame(parent)
         output_frame.grid(row=1, column=0, sticky="nsew")
         self.material_output = self.make_text_area(output_frame, height=22)
@@ -274,10 +338,10 @@ class VideoScriptGUI:
     def create_voiceover_page(self, parent):
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(1, weight=1)
-        controls = ttk.Frame(parent)
+        controls = self.make_button_bar(parent)
         controls.grid(row=0, column=0, sticky="ew", pady=(0, 12))
-        ttk.Button(controls, text="按分镜生成配音", style="Primary.TButton", command=self.confirm_voiceover_generation).pack(side=tk.LEFT)
-        ttk.Button(controls, text="刷新摘要", style="Secondary.TButton", command=self.refresh_voiceover_output).pack(side=tk.LEFT, padx=(8, 0))
+        controls.add_button("按分镜生成配音", self.confirm_voiceover_generation, style="Primary.TButton", width=16)
+        controls.add_button("刷新摘要", self.refresh_voiceover_output, width=10)
         output_frame = ttk.Frame(parent)
         output_frame.grid(row=1, column=0, sticky="nsew")
         self.voiceover_output = self.make_text_area(output_frame, height=22)
@@ -285,10 +349,10 @@ class VideoScriptGUI:
     def create_assembly_page(self, parent):
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(1, weight=1)
-        controls = ttk.Frame(parent)
+        controls = self.make_button_bar(parent)
         controls.grid(row=0, column=0, sticky="ew", pady=(0, 12))
-        ttk.Button(controls, text="生成合成计划", style="Primary.TButton", command=self.confirm_assembly_plan).pack(side=tk.LEFT)
-        ttk.Button(controls, text="刷新摘要", style="Secondary.TButton", command=self.refresh_assembly_output).pack(side=tk.LEFT, padx=(8, 0))
+        controls.add_button("生成合成计划", self.confirm_assembly_plan, style="Primary.TButton", width=14)
+        controls.add_button("刷新摘要", self.refresh_assembly_output, width=10)
         output_frame = ttk.Frame(parent)
         output_frame.grid(row=1, column=0, sticky="nsew")
         self.assembly_output = self.make_text_area(output_frame, height=22)
@@ -307,14 +371,14 @@ class VideoScriptGUI:
         self.agent_entry = ttk.Entry(input_row, font=(FONT_FAMILY, 10))
         self.agent_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.agent_entry.bind("<Return>", lambda _event: self.handle_agent_command())
-        ttk.Button(input_row, text="执行", style="Secondary.TButton", command=self.handle_agent_command).pack(side=tk.LEFT, padx=(8, 0))
+        self.make_button(input_row, text="执行", style="Secondary.TButton", width=8, command=self.handle_agent_command).pack(side=tk.LEFT, padx=(8, 0))
 
-        quick_row = ttk.Frame(frame)
+        quick_row = self.make_button_bar(frame)
         quick_row.pack(fill=tk.X, pady=(10, 0))
-        ttk.Button(quick_row, text="帮助", style="Secondary.TButton", command=lambda: self.execute_agent_command("帮助")).pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Button(quick_row, text="状态", style="Secondary.TButton", command=lambda: self.execute_agent_command("状态")).pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Button(quick_row, text="开始", style="Secondary.TButton", command=lambda: self.execute_agent_command("开始生成")).pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Button(quick_row, text="确认", style="Secondary.TButton", command=lambda: self.execute_agent_command("确认")).pack(side=tk.LEFT)
+        quick_row.add_button("帮助", lambda: self.execute_agent_command("帮助"), width=8)
+        quick_row.add_button("状态", lambda: self.execute_agent_command("状态"), width=8)
+        quick_row.add_button("开始", lambda: self.execute_agent_command("开始生成"), width=8)
+        quick_row.add_button("确认", lambda: self.execute_agent_command("确认"), width=8)
 
         self.log_agent("控制台已就绪。输入“帮助”查看可用命令。")
 
@@ -327,12 +391,12 @@ class VideoScriptGUI:
         ttk.Label(frame, text="输出文件夹:", style="Field.TLabel").grid(row=0, column=0, sticky=tk.W, pady=5)
         self.output_dir_var = tk.StringVar(value=self.output_dir)
         ttk.Entry(frame, textvariable=self.output_dir_var, width=58, font=(FONT_FAMILY, 10)).grid(row=0, column=1, sticky="ew", padx=10, pady=5)
-        ttk.Button(frame, text="浏览...", style="Secondary.TButton", command=self.browse_output_dir).grid(row=0, column=2, sticky=tk.W, pady=5)
+        self.make_button(frame, text="浏览...", width=10, command=self.browse_output_dir).grid(row=0, column=2, sticky=tk.W, pady=5)
 
         ttk.Label(frame, text="AI API Key:", style="Field.TLabel").grid(row=1, column=0, sticky=tk.W, pady=5)
         self.api_key_entry = ttk.Entry(frame, width=58, font=(FONT_FAMILY, 10), show="*")
         self.api_key_entry.grid(row=1, column=1, sticky="ew", padx=10, pady=5)
-        ttk.Button(frame, text="保存配置", style="Secondary.TButton", command=self.save_config).grid(row=1, column=2, sticky=tk.W, pady=5)
+        self.make_button(frame, text="保存配置", width=10, command=self.save_config).grid(row=1, column=2, sticky=tk.W, pady=5)
 
         ttk.Label(frame, text="AI Base URL:", style="Field.TLabel").grid(row=2, column=0, sticky=tk.W, pady=5)
         self.api_base_url_entry = ttk.Entry(frame, width=58, font=(FONT_FAMILY, 10))
@@ -379,12 +443,12 @@ class VideoScriptGUI:
         self.style_listbox(self.video_listbox)
         self.video_listbox.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
 
-        video_buttons = ttk.Frame(left)
+        video_buttons = self.make_button_bar(left)
         video_buttons.pack(fill=tk.X)
-        ttk.Button(video_buttons, text="添加文件...", style="Secondary.TButton", command=self.add_videos).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(video_buttons, text="添加文件夹...", style="Secondary.TButton", command=self.add_folder).pack(side=tk.LEFT, padx=(3, 0))
-        ttk.Button(video_buttons, text="删除选中", style="Secondary.TButton", command=self.remove_selected_video).pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Button(video_buttons, text="清空", style="Secondary.TButton", command=self.clear_videos).pack(side=tk.LEFT, padx=(8, 0))
+        video_buttons.add_button("添加文件...", self.add_videos, width=12)
+        video_buttons.add_button("添加文件夹...", self.add_folder, width=13)
+        video_buttons.add_button("删除选中", self.remove_selected_video, width=10)
+        video_buttons.add_button("清空", self.clear_videos, width=8)
 
         ttk.Label(right, text="产品名称:", style="Field.TLabel").grid(row=0, column=0, sticky=tk.W, pady=5)
         self.product_entry = ttk.Entry(right, width=34, font=(FONT_FAMILY, 10))
@@ -419,14 +483,12 @@ class VideoScriptGUI:
         ttk.Checkbutton(options, text="保存原文", variable=self.save_transcript_var).pack(side=tk.LEFT, padx=10)
         ttk.Checkbutton(options, text="保存清洗文本", variable=self.save_clean_var).pack(side=tk.LEFT, padx=10)
 
-        action_row = ttk.Frame(right)
+        action_row = self.make_button_bar(right)
         action_row.grid(row=5, column=1, sticky=tk.EW, padx=8, pady=(10, 0))
-        self.start_button = ttk.Button(action_row, text="开始生成", style="Primary.TButton", command=self.start_generation)
-        self.start_button.pack(side=tk.LEFT)
-        self.stop_button = ttk.Button(action_row, text="停止", style="Secondary.TButton", command=self.stop_generation, state=tk.DISABLED)
-        self.stop_button.pack(side=tk.LEFT, padx=8)
+        self.start_button = action_row.add_button("开始生成", self.start_generation, style="Primary.TButton", width=12)
+        self.stop_button = action_row.add_button("停止", self.stop_generation, width=8, state=tk.DISABLED)
         self.status_var = tk.StringVar(value="就绪")
-        ttk.Label(action_row, textvariable=self.status_var, style="Info.TLabel").pack(side=tk.LEFT, padx=12)
+        ttk.Label(right, textvariable=self.status_var, style="Info.TLabel").grid(row=6, column=1, sticky=tk.W, padx=8, pady=(4, 0))
 
         right.columnconfigure(1, weight=1)
 
