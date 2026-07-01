@@ -49,7 +49,7 @@ class VideoScriptGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("MiMo 短视频工作流")
-        self.root.geometry("1420x940")
+        self.root.geometry("1480x940")
         self.root.minsize(1180, 760)
         self.root.resizable(True, True)
         self.root.configure(bg=WINDOW_BG)
@@ -61,6 +61,7 @@ class VideoScriptGUI:
         self.vision_model = config.VISION_API_MODEL
         self.pending_agent_actions = None
         self.workflow = WorkflowState(output_dir=self.output_dir)
+        self.settings_visible = False
 
         self.setup_styles()
         self.create_widgets()
@@ -70,9 +71,7 @@ class VideoScriptGUI:
     def setup_styles(self):
         style = ttk.Style()
         theme_names = set(style.theme_names())
-        if sys.platform == "darwin" and "aqua" in theme_names:
-            style.theme_use("aqua")
-        elif "clam" in theme_names:
+        if "clam" in theme_names:
             style.theme_use("clam")
 
         style.configure(".", font=(FONT_FAMILY, 10))
@@ -82,33 +81,54 @@ class VideoScriptGUI:
         style.configure("Title.TLabel", font=(FONT_FAMILY, 20, "bold"), foreground=TEXT_FG, background=WINDOW_BG)
         style.configure("Info.TLabel", font=(FONT_FAMILY, 10), foreground=MUTED_FG, background=WINDOW_BG)
         style.configure("Field.TLabel", font=(FONT_FAMILY, 10), foreground=MUTED_FG, background=WINDOW_BG)
-        style.configure("TLabelframe", background=WINDOW_BG, bordercolor=BORDER, relief="solid")
+        style.configure("TLabelframe", background=WINDOW_BG, bordercolor=BORDER, lightcolor=BORDER, darkcolor=BORDER, relief="solid")
         style.configure("TLabelframe.Label", background=WINDOW_BG, foreground=MUTED_FG, font=(FONT_FAMILY, 10, "bold"))
         style.configure("TNotebook", background=WINDOW_BG, borderwidth=0)
-        style.configure("TNotebook.Tab", font=(FONT_FAMILY, 10), padding=(16, 9))
+        style.configure("TNotebook.Tab", background="#ececf1", foreground=TEXT_FG, font=(FONT_FAMILY, 10), padding=(16, 9))
+        style.map(
+            "TNotebook.Tab",
+            background=[("selected", PANEL_BG), ("active", "#f2f2f7")],
+            foreground=[("selected", TEXT_FG), ("active", TEXT_FG)],
+        )
         style.configure("TEntry", padding=(8, 5), foreground=TEXT_FG, fieldbackground=PANEL_BG)
         style.configure("TCheckbutton", background=WINDOW_BG, foreground=TEXT_FG)
         style.configure("TRadiobutton", background=WINDOW_BG, foreground=TEXT_FG)
         style.configure("Horizontal.TProgressbar", background=ACCENT, troughcolor="#e5e5ea", borderwidth=0)
-        style.configure("Primary.TButton", font=(FONT_FAMILY, 10, "bold"), padding=(14, 8))
-        style.configure("Secondary.TButton", font=(FONT_FAMILY, 10), padding=(12, 7))
-        style.map("Primary.TButton", foreground=[("disabled", MUTED_FG), ("!disabled", ACCENT)])
-        style.map("Secondary.TButton", foreground=[("disabled", MUTED_FG), ("!disabled", TEXT_FG)])
+        style.configure("Primary.TButton", background="#e8f2ff", foreground=ACCENT, font=(FONT_FAMILY, 10, "bold"), padding=(14, 8), borderwidth=1)
+        style.configure("Secondary.TButton", background="#f2f2f7", foreground=TEXT_FG, font=(FONT_FAMILY, 10), padding=(12, 7), borderwidth=1)
+        style.map(
+            "Primary.TButton",
+            background=[("active", "#d9ebff"), ("disabled", "#f2f2f7")],
+            foreground=[("disabled", MUTED_FG), ("!disabled", ACCENT)],
+        )
+        style.map(
+            "Secondary.TButton",
+            background=[("active", "#e5e5ea"), ("disabled", "#f2f2f7")],
+            foreground=[("disabled", MUTED_FG), ("!disabled", TEXT_FG)],
+        )
 
     def create_widgets(self):
-        paned = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
-        paned.pack(fill=tk.BOTH, expand=True)
+        self.main_paned = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
+        self.main_paned.pack(fill=tk.BOTH, expand=True)
 
-        main_frame = ttk.Frame(paned, padding="18")
-        agent_frame = ttk.Frame(paned, padding=(0, 18, 18, 18))
-        paned.add(main_frame, weight=4)
-        paned.add(agent_frame, weight=1)
+        main_frame = ttk.Frame(self.main_paned, padding="18")
+        agent_frame = ttk.Frame(self.main_paned, padding=(0, 18, 18, 18), width=340)
+        self.main_paned.add(main_frame, weight=5)
+        self.main_paned.add(agent_frame, weight=2)
 
-        ttk.Label(main_frame, text="短视频工作流", style="Title.TLabel").pack(anchor=tk.W, pady=(0, 14))
+        header = ttk.Frame(main_frame)
+        header.pack(fill=tk.X, pady=(0, 14))
+        ttk.Label(header, text="短视频工作流", style="Title.TLabel").pack(side=tk.LEFT)
+        self.model_status_label = ttk.Label(header, text="", style="Info.TLabel")
+        self.model_status_label.pack(side=tk.RIGHT, padx=(12, 0))
+        self.settings_button = ttk.Button(header, text="显示设置", style="Secondary.TButton", command=self.toggle_common_settings)
+        self.settings_button.pack(side=tk.RIGHT)
 
         self.create_common_settings(main_frame)
+        self.common_settings_frame.pack_forget()
         self.create_workflow_tabs(main_frame)
         self.create_agent_panel(agent_frame)
+        self.root.after(100, self.set_initial_pane_sizes)
 
     def create_workflow_tabs(self, parent):
         self.workflow_notebook = ttk.Notebook(parent)
@@ -300,6 +320,7 @@ class VideoScriptGUI:
 
     def create_common_settings(self, parent):
         frame = ttk.LabelFrame(parent, text="通用设置", padding="12")
+        self.common_settings_frame = frame
         frame.pack(fill=tk.X, pady=(0, 12))
         frame.columnconfigure(1, weight=1)
 
@@ -320,6 +341,23 @@ class VideoScriptGUI:
         ttk.Label(frame, text="AI模型:", style="Field.TLabel").grid(row=3, column=0, sticky=tk.W, pady=5)
         self.api_model_entry = ttk.Entry(frame, width=36, font=(FONT_FAMILY, 10))
         self.api_model_entry.grid(row=3, column=1, sticky=tk.W, padx=10, pady=5)
+
+    def toggle_common_settings(self):
+        self.settings_visible = not self.settings_visible
+        if self.settings_visible:
+            self.common_settings_frame.pack(fill=tk.X, pady=(0, 12), before=self.workflow_notebook)
+            self.settings_button.configure(text="隐藏设置")
+        else:
+            self.common_settings_frame.pack_forget()
+            self.settings_button.configure(text="显示设置")
+
+    def set_initial_pane_sizes(self):
+        try:
+            width = self.root.winfo_width()
+            if width > 1:
+                self.main_paned.sashpos(0, max(780, width - 360))
+        except tk.TclError:
+            pass
 
     def create_task_settings(self, parent):
         frame = ttk.LabelFrame(parent, text="生成任务", padding="10")
@@ -445,6 +483,7 @@ class VideoScriptGUI:
         self.output_dir = config.OUTPUT_DIR
         self.output_dir_var.set(config.OUTPUT_DIR)
         self.workflow.output_dir = config.OUTPUT_DIR
+        self.update_header_status()
 
     def save_config(self):
         try:
@@ -458,6 +497,7 @@ class VideoScriptGUI:
                 output_dir=self.output_dir,
             )
             os.makedirs(self.output_dir, exist_ok=True)
+            self.update_header_status()
             messagebox.showinfo("成功", "配置已保存")
         except Exception as e:
             messagebox.showerror("错误", f"保存配置失败: {e}")
@@ -472,7 +512,14 @@ class VideoScriptGUI:
         config.API_BASE_URL = api_base_url
         config.API_URL = config._chat_completions_url(api_base_url)
         config.API_MODEL = api_model
+        self.update_header_status(api_model)
         return api_key, api_base_url, api_model
+
+    def update_header_status(self, model=None):
+        if not hasattr(self, "model_status_label"):
+            return
+        model_name = model or self.api_model_entry.get().strip() or config.API_MODEL
+        self.model_status_label.configure(text=f"模型 {model_name}")
 
     def refresh_output_dir(self):
         self.output_dir = self.output_dir_var.get().strip() or self.output_dir
