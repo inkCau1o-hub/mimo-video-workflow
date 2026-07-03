@@ -1,8 +1,9 @@
 import { useState } from "react";
+import { pickList } from "../workflowData";
 
 export function MaterialLibraryPage({ activity, project, onTagMaterials }) {
   const [paths, setPaths] = useState("");
-  const assets = activity?.material_assets || project?.material_assets || [];
+  const assets = pickList(activity, project, "material_assets");
 
   return (
     <div className="page-grid two-column">
@@ -32,7 +33,7 @@ export function MaterialLibraryPage({ activity, project, onTagMaterials }) {
         <div className="asset-list">
           {assets.map((asset) => (
             <article className="asset-row" key={asset.asset_id || asset.file_path}>
-              <strong>{asset.material_type || "material"}</strong>
+              <strong>{asset.material_type || "material"}{asset.asset_id ? ` · ${asset.asset_id}` : ""}</strong>
               <span>{asset.file_path}</span>
               <p>{asset.scene_summary}</p>
               <div className="tag-row">

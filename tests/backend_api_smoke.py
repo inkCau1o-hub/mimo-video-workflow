@@ -217,6 +217,25 @@ def test_backend_http_workflow_chain():
             status, payload = request_json(
                 base_url,
                 "POST",
+                f"/projects/{project_id}/reference/videos",
+                {"videos": ["/tmp/agent-reference.mp4"]},
+            )
+            assert status == 200, payload
+            assert payload["activity"]["reference_videos"] == ["/tmp/agent-reference.mp4"]
+
+            status, payload = request_json(
+                base_url,
+                "POST",
+                "/agent/command",
+                {"project_id": project_id, "command": "转写当前活动"},
+            )
+            assert status == 202, payload
+            agent_transcribe_job = assert_succeeded_job(base_url, payload)
+            assert "agent-reference.mp4" in agent_transcribe_job["result"]["reference_text"]
+
+            status, payload = request_json(
+                base_url,
+                "POST",
                 f"/projects/{project_id}/reference/transcribe",
                 {
                     "videos": ["/tmp/reference.mp4"],
@@ -342,6 +361,56 @@ def test_backend_http_workflow_chain():
             )
             assert status == 202
             assert payload["status"]["project_id"] == project_id
+            assert "当前项目" in payload["summary"]
+
+            status, payload = request_json(
+                base_url,
+                "POST",
+                "/agent/command",
+                {"command": "帮助"},
+            )
+            assert status == 202
+            assert "创建项目" in payload["summary"]
+
+            status, payload = request_json(
+                base_url,
+                "POST",
+                "/agent/command",
+                {"command": "创建项目 Agent测试"},
+            )
+            assert status == 202
+            assert payload["status"]["name"] == "Agent测试"
+            assert payload["project"]["activities"]
+
+            status, payload = request_json(
+                base_url,
+                "POST",
+                "/agent/command",
+                {"project_id": project_id, "command": "创建活动 Agent活动"},
+            )
+            assert status == 202
+            agent_activity_id = payload["activity"]["activity_id"]
+            assert payload["activity"]["name"] == "Agent活动"
+
+            status, payload = request_json(
+                base_url,
+                "POST",
+                "/agent/command",
+                {"project_id": project_id, "command": f"切换活动 {first_activity_id}"},
+            )
+            assert status == 202
+            assert payload["status"]["current_activity_id"] == first_activity_id
+            assert payload["activity"]["activity_id"] == first_activity_id
+            assert agent_activity_id != first_activity_id
+
+            status, payload = request_json(
+                base_url,
+                "POST",
+                "/agent/command",
+                {"project_id": project_id, "command": "删除项目"},
+            )
+            assert status == 202
+            assert payload["requires_confirmation"] is True
         finally:
             server.shutdown()
             server.server_close()

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { pickStoryboardAnalysis, referenceText as selectReferenceText } from "../workflowData";
 
 function textPreview(value, maxLength = 360) {
   const text = String(value || "").trim();
@@ -9,8 +10,8 @@ function textPreview(value, maxLength = 360) {
 export function StoryboardPage({ activity, project, onAnalyzeStoryboard }) {
   const [duration, setDuration] = useState("30");
   const [shotCount, setShotCount] = useState("5");
-  const referenceText = activity?.reference_copy?.source_text || project?.reference_copy?.source_text || "";
-  const analysis = activity?.storyboard_analysis || project?.storyboard_analysis;
+  const referenceText = selectReferenceText(activity, project);
+  const analysis = pickStoryboardAnalysis(activity, project);
   const canAnalyze = Boolean(project && referenceText.trim());
 
   return (

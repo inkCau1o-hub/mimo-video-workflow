@@ -136,6 +136,14 @@ class WorkflowState:
         self._touch()
         return activity
 
+    def set_reference_videos(self, videos: Iterable[PathLike]) -> WorkflowActivity:
+        activity = self.current_activity
+        activity.reference_videos = [str(Path(path).expanduser()) for path in videos if str(path).strip()]
+        activity.status = _activity_status(activity)
+        self._touch_activity(activity)
+        self._touch()
+        return activity
+
     def set_reference_text(
         self,
         reference_text: str,

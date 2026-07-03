@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { pickList, referenceText as selectReferenceText } from "../workflowData";
 
 function splitLines(value) {
   return String(value || "")
@@ -11,12 +12,12 @@ function fileName(path) {
   return String(path || "").split("/").filter(Boolean).pop() || path;
 }
 
-export function ReferencePage({ activity, project, onSetReferenceText, onTranscribeReference }) {
+export function ReferencePage({ activity, project, onSetReferenceText, onSetReferenceVideos, onTranscribeReference }) {
   const [referenceText, setReferenceText] = useState("");
   const [videoInput, setVideoInput] = useState("");
   const [videoQueue, setVideoQueue] = useState([]);
-  const savedText = activity?.reference_copy?.source_text || project?.reference_copy?.source_text || "";
-  const savedVideos = useMemo(() => activity?.reference_videos || [], [activity]);
+  const savedText = selectReferenceText(activity, project);
+  const savedVideos = useMemo(() => pickList(activity, project, "reference_videos"), [activity, project]);
 
   useEffect(() => {
     setReferenceText(savedText);
@@ -29,11 +30,16 @@ export function ReferencePage({ activity, project, onSetReferenceText, onTranscr
   const addVideos = () => {
     const next = splitLines(videoInput);
     if (!next.length) return;
-    setVideoQueue((items) => Array.from(new Set([...items, ...next])));
+    const nextQueue = Array.from(new Set([...videoQueue, ...next]));
+    setVideoQueue(nextQueue);
+    onSetReferenceVideos?.(nextQueue);
     setVideoInput("");
   };
 
-  const clearVideos = () => setVideoQueue([]);
+  const clearVideos = () => {
+    setVideoQueue([]);
+    onSetReferenceVideos?.([]);
+  };
   const canTranscribe = Boolean(project && videoQueue.length > 0);
 
   return (

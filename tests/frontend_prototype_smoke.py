@@ -14,6 +14,7 @@ REQUIRED_FILES = [
     "src/main.jsx",
     "src/App.jsx",
     "src/api/client.js",
+    "src/workflowData.js",
     "src/components/AgentConsole.jsx",
     "src/components/JobLogPanel.jsx",
     "src/components/ProjectStatusPanel.jsx",

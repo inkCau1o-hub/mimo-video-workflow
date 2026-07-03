@@ -16,7 +16,7 @@ export function AgentConsole({ onCommand, messages }) {
       <div className="panel-title">AI 控制台</div>
       <div className="agent-stream">
         {messages.length === 0 ? (
-          <div className="muted">输入“状态”查看项目状态。</div>
+          <div className="muted">输入“帮助”查看项目和活动命令。</div>
         ) : (
           messages.map((message, index) => (
             <div className={`agent-message ${message.role}`} key={`${message.role}-${index}`}>
@@ -29,7 +29,7 @@ export function AgentConsole({ onCommand, messages }) {
         <input
           value={command}
           onChange={(event) => setCommand(event.target.value)}
-          placeholder="状态 / 生成分镜 / 执行计划"
+          placeholder="状态 / 创建活动 / 生成分镜 / 生成配音"
         />
         <button type="submit">执行</button>
       </form>

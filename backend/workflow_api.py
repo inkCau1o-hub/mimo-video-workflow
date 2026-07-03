@@ -95,6 +95,17 @@ class WorkflowBackend:
             "project": state.to_dict(),
         }
 
+    def set_reference_videos(self, project_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
+        state = self.store.get_state(project_id)
+        videos = _as_list(payload.get("videos") or payload.get("video"))
+        activity = state.set_reference_videos(videos)
+        self.store.save_project(project_id)
+        return {
+            "activity": activity.to_dict(),
+            "status": self.store.project_status(project_id),
+            "project": state.to_dict(),
+        }
+
     def set_reference_text(self, project_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
         state = self.store.get_state(project_id)
         state.set_reference_text(
@@ -255,20 +266,139 @@ class WorkflowBackend:
         project_id = str(payload.get("project_id") or "")
         command = str(payload.get("command") or "").strip()
         actions = payload.get("actions") or []
+        normalized = command.lower().strip()
 
-        if command.lower() in {"status", "状态"} and project_id:
+        if normalized in {"help", "帮助", "命令"}:
             return {
-                "summary": "当前项目状态",
+                "summary": "可用命令: 创建项目 名称、删除项目、确认删除项目、创建活动 名称、切换活动 名称或ID、状态、当前活动、转写当前活动、生成分镜、生成配音、生成合成计划。",
                 "requires_confirmation": False,
                 "actions": [],
+            }
+
+        if normalized.startswith("创建项目"):
+            name = command.replace("创建项目", "", 1).strip() or "MiMo Prototype Project"
+            created = self.create_project({"name": name})
+            return {
+                "summary": f"已创建项目: {created['status']['name']}",
+                "requires_confirmation": False,
+                "actions": [{"type": "create_project", "name": name}],
+                **created,
+                "projects": self.list_projects()["projects"],
+            }
+
+        if not project_id:
+            return {
+                "summary": "请先创建或打开项目，再执行这个命令。",
+                "requires_confirmation": False,
+                "actions": [],
+            }
+
+        if normalized in {"status", "状态", "查看状态", "查看当前活动状态", "当前活动"}:
+            status = self.get_status(project_id)
+            project = self.get_project(project_id)["project"]
+            activity = _current_activity(project)
+            return {
+                "summary": _status_summary(status, activity),
+                "requires_confirmation": False,
+                "actions": [],
+                "status": status,
+                "activity": activity,
+            }
+
+        if normalized.startswith("删除项目") and not normalized.startswith("确认删除项目"):
+            return {
+                "summary": "删除项目会把当前项目移入 .trash。输入“确认删除项目”执行删除。",
+                "requires_confirmation": True,
+                "actions": [{"type": "delete_project", "project_id": project_id}],
                 "status": self.get_status(project_id),
+            }
+
+        if normalized.startswith("确认删除项目"):
+            deleted = self.delete_project(project_id)
+            return {
+                "summary": f"已删除项目 {project_id}，项目已移入回收站。",
+                "requires_confirmation": False,
+                "actions": [{"type": "delete_project", "project_id": project_id}],
+                **deleted,
+            }
+
+        if normalized.startswith("创建活动"):
+            name = command.replace("创建活动", "", 1).strip() or "新活动"
+            created = self.create_activity(project_id, {"name": name})
+            return {
+                "summary": f"已创建并切换到活动: {created['activity']['name']}",
+                "requires_confirmation": False,
+                "actions": [{"type": "create_activity", "name": name}],
+                **created,
+            }
+
+        if normalized.startswith("切换活动"):
+            target = command.replace("切换活动", "", 1).strip()
+            if not target:
+                raise ValueError("切换活动需要活动名称或 activity_id")
+            project = self.get_project(project_id)["project"]
+            activity = _find_activity(project, target)
+            if activity is None:
+                raise KeyError(f"activity not found: {target}")
+            selected = self.select_activity(project_id, activity["activity_id"])
+            return {
+                "summary": f"已切换到活动: {selected['activity']['name']}",
+                "requires_confirmation": False,
+                "actions": [{"type": "select_activity", "activity_id": activity["activity_id"]}],
+                **selected,
+            }
+
+        if normalized in {"转写当前活动", "转写参考", "参考转写"}:
+            project = self.get_project(project_id)["project"]
+            activity = _current_activity(project)
+            videos = activity.get("reference_videos") or []
+            if not videos:
+                return {
+                    "summary": "当前活动还没有参考视频。请先在参考转写页加入视频队列。",
+                    "requires_confirmation": False,
+                    "actions": [],
+                    "status": self.get_status(project_id),
+                }
+            result = self.transcribe_reference(project_id, {"videos": videos, "model_size": "medium"})
+            return {
+                "summary": f"已启动参考转写，共 {len(videos)} 个视频。",
+                "requires_confirmation": False,
+                "actions": [{"type": "transcribe_reference", "videos": videos}],
+                **result,
+            }
+
+        if normalized in {"生成分镜", "分析分镜"}:
+            result = self.analyze_storyboard(project_id, {})
+            return {
+                "summary": "已启动分镜分析。",
+                "requires_confirmation": False,
+                "actions": [{"type": "analyze_storyboard"}],
+                **result,
+            }
+
+        if normalized in {"生成配音", "配音"}:
+            result = self.generate_voiceovers(project_id, {})
+            return {
+                "summary": "已启动配音生成。",
+                "requires_confirmation": False,
+                "actions": [{"type": "generate_voiceovers"}],
+                **result,
+            }
+
+        if normalized in {"生成合成计划", "合成计划", "生成合成"}:
+            result = self.build_assembly_plan(project_id, {})
+            return {
+                "summary": "已启动合成计划生成。",
+                "requires_confirmation": False,
+                "actions": [{"type": "build_assembly_plan"}],
+                **result,
             }
 
         results = []
         for action in actions:
             results.append(self.dispatch_action(project_id, action))
         return {
-            "summary": payload.get("summary") or "agent command accepted",
+            "summary": payload.get("summary") or "暂未识别这个命令。输入“帮助”查看可用命令。",
             "requires_confirmation": bool(payload.get("requires_confirmation", False)),
             "actions": actions,
             "results": results,
@@ -372,3 +502,37 @@ def _optional_int(value: Any) -> Optional[int]:
     if value in (None, ""):
         return None
     return int(value)
+
+
+def _current_activity(project: Mapping[str, Any]) -> Dict[str, Any]:
+    activities = project.get("activities") or []
+    current_id = project.get("current_activity_id") or ""
+    for activity in activities:
+        if isinstance(activity, Mapping) and activity.get("activity_id") == current_id:
+            return dict(activity)
+    if activities and isinstance(activities[0], Mapping):
+        return dict(activities[0])
+    return {}
+
+
+def _find_activity(project: Mapping[str, Any], target: str) -> Optional[Dict[str, Any]]:
+    needle = str(target or "").strip()
+    for activity in project.get("activities") or []:
+        if not isinstance(activity, Mapping):
+            continue
+        if activity.get("activity_id") == needle or activity.get("name") == needle:
+            return dict(activity)
+    return None
+
+
+def _status_summary(status: Mapping[str, Any], activity: Mapping[str, Any]) -> str:
+    activity_name = activity.get("name") or status.get("current_activity_name") or "未选择"
+    return (
+        f"当前项目: {status.get('name', '未命名项目')}\n"
+        f"当前活动: {activity_name}\n"
+        f"参考文案: {'已就绪' if status.get('has_reference') else '未设置'}\n"
+        f"分镜: {status.get('storyboard_shots') or 0} 条\n"
+        f"素材: {status.get('material_assets') or 0} 个\n"
+        f"配音: {status.get('voiceover_segments') or 0} 条\n"
+        f"合成计划: {'已生成' if status.get('has_assembly_plan') else '未生成'}"
+    )

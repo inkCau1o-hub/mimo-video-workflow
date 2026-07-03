@@ -21,6 +21,25 @@ function splitLines(value) {
     .filter(Boolean);
 }
 
+function formatAgentResponse(payload) {
+  const lines = [];
+  if (payload.summary) lines.push(payload.summary);
+  if (payload.requires_confirmation) lines.push("需要确认后才会执行。");
+  if (payload.job) lines.push(`任务已创建: ${payload.job.job_type} / ${payload.job.job_id}`);
+  if (payload.status && !payload.summary?.includes("当前项目")) {
+    lines.push(
+      [
+        `当前活动: ${payload.status.current_activity_name || "未选择"}`,
+        `参考文案: ${payload.status.has_reference ? "已就绪" : "未设置"}`,
+        `分镜: ${payload.status.storyboard_shots || 0} 条`,
+        `配音: ${payload.status.voiceover_segments || 0} 条`,
+        `合成计划: ${payload.status.has_assembly_plan ? "已生成" : "未生成"}`,
+      ].join("\n")
+    );
+  }
+  return lines.filter(Boolean).join("\n\n") || "命令已处理。";
+}
+
 export default function App() {
   const [backendUrl] = useState(DEFAULT_BACKEND_URL);
   const [activePage, setActivePage] = useState("reference");
@@ -221,23 +240,57 @@ export default function App() {
     }
   }, [api, addMessage, projectId]);
 
+  const setReferenceVideos = useCallback(async (videos) => {
+    if (!projectId) {
+      addMessage("system", "请先创建项目。");
+      return;
+    }
+    try {
+      const payload = await api.post(`/projects/${projectId}/reference/videos`, { videos });
+      setStatus(payload.status);
+      setProject(payload.project);
+      addMessage("system", `参考视频队列已保存，共 ${videos.length} 个。`);
+    } catch (err) {
+      setError(err.message);
+      addMessage("system", `保存参考视频失败: ${err.message}`);
+    }
+  }, [api, addMessage, projectId]);
+
   const runAgentCommand = useCallback(async (command) => {
     addMessage("user", command);
     try {
       const payload = await api.post("/agent/command", { project_id: projectId, command });
-      addMessage("system", JSON.stringify(payload, null, 2));
+      if (payload.projects) setProjects(payload.projects);
       if (payload.status) setStatus(payload.status);
+      if (payload.project) setProject(payload.project);
+      if (payload.deleted && payload.project_id === projectId) {
+        const nextProject = (payload.projects || [])[0];
+        if (nextProject) {
+          const snapshot = await api.get(`/projects/${nextProject.project_id}/snapshot`);
+          setStatus(snapshot.status);
+          setProject(snapshot.project);
+        } else {
+          setStatus(null);
+          setProject(null);
+        }
+      }
+      addMessage("system", formatAgentResponse(payload));
+      if (payload.job) {
+        const finished = await pollJob(payload.job.job_id);
+        addMessage("system", `${payload.summary || "Agent 任务"}: ${finished.status}`);
+      }
     } catch (err) {
       setError(err.message);
       addMessage("system", `Agent 命令失败: ${err.message}`);
     }
-  }, [api, addMessage, projectId]);
+  }, [api, addMessage, pollJob, projectId]);
 
   const page = {
     reference: (
       <ReferencePage
         activity={currentActivity}
         project={project}
+        onSetReferenceVideos={setReferenceVideos}
         onSetReferenceText={setReferenceText}
         onTranscribeReference={(paths) => submitProjectJob(
           "/reference/transcribe",
@@ -264,7 +317,7 @@ export default function App() {
       <VoiceoverPage
         activity={currentActivity}
         project={project}
-        onGenerateVoiceovers={() => submitProjectJob("/voiceovers/generate", {}, "生成配音")}
+        onGenerateVoiceovers={(payload) => submitProjectJob("/voiceovers/generate", payload, "生成配音")}
       />
     ),
     assembly: (

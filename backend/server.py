@@ -100,6 +100,8 @@ class WorkflowRequestHandler(BaseHTTPRequestHandler):
                 return HTTPStatus.OK, self.backend.select_activity(project_id, subpath[1])
             if method == "POST" and subpath == ["reference", "transcribe"]:
                 return HTTPStatus.ACCEPTED, self.backend.transcribe_reference(project_id, payload)
+            if method == "POST" and subpath == ["reference", "videos"]:
+                return HTTPStatus.OK, self.backend.set_reference_videos(project_id, payload)
             if method == "POST" and subpath == ["reference", "text"]:
                 return HTTPStatus.OK, self.backend.set_reference_text(project_id, payload)
             if method == "POST" and subpath == ["storyboard", "analyze"]:
