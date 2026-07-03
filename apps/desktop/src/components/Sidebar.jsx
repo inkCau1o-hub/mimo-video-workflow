@@ -7,7 +7,7 @@ const pages = [
   ["results", "日志结果"],
 ];
 
-export function Sidebar({ activePage, onChangePage, projects }) {
+export function Sidebar({ activePage, currentProjectId, onChangePage, onOpenProject, projects }) {
   return (
     <aside className="sidebar">
       <div className="sidebar-section">
@@ -32,10 +32,15 @@ export function Sidebar({ activePage, onChangePage, projects }) {
             <div className="muted">暂无项目</div>
           ) : (
             projects.map((project) => (
-              <div className="project-row" key={project.project_id}>
+              <button
+                type="button"
+                className={project.project_id === currentProjectId ? "project-row active" : "project-row"}
+                key={project.project_id}
+                onClick={() => onOpenProject(project.project_id)}
+              >
                 <strong>{project.name}</strong>
                 <span>{project.project_id}</span>
-              </div>
+              </button>
             ))
           )}
         </div>

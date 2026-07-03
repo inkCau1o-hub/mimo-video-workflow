@@ -69,6 +69,21 @@ export default function App() {
     }
   }, [api, addMessage]);
 
+  const openProject = useCallback(async (nextProjectId) => {
+    try {
+      const snapshot = await api.get(`/projects/${nextProjectId}/snapshot`);
+      setStatus(snapshot.status);
+      setProject(snapshot.project);
+      setActivePage("reference");
+      addMessage("system", `已打开项目 ${nextProjectId}`);
+      setConnected(true);
+      setError("");
+    } catch (err) {
+      setError(err.message);
+      addMessage("system", `打开项目失败: ${err.message}`);
+    }
+  }, [api, addMessage]);
+
   useEffect(() => {
     refreshProject();
   }, [refreshProject]);
@@ -188,7 +203,13 @@ export default function App() {
       />
       {error ? <div className="error-banner">{error}</div> : null}
       <div className="body-grid">
-        <Sidebar activePage={activePage} onChangePage={setActivePage} projects={projects} />
+        <Sidebar
+          activePage={activePage}
+          currentProjectId={projectId}
+          onChangePage={setActivePage}
+          onOpenProject={openProject}
+          projects={projects}
+        />
         <main className="workspace">{page}</main>
         <aside className="right-rail">
           <AgentConsole onCommand={runAgentCommand} messages={messages} />
