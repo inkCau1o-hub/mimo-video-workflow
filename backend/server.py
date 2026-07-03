@@ -31,6 +31,12 @@ class WorkflowRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         self._handle("POST")
 
+    def do_PATCH(self) -> None:
+        self._handle("PATCH")
+
+    def do_DELETE(self) -> None:
+        self._handle("DELETE")
+
     def log_message(self, format: str, *args: Any) -> None:
         if getattr(self.server, "quiet", False):
             return
@@ -55,7 +61,7 @@ class WorkflowRequestHandler(BaseHTTPRequestHandler):
     def dispatch(self, method: str) -> RouteResult:
         path = urlparse(self.path).path.strip("/")
         parts = [part for part in path.split("/") if part]
-        payload = self.read_json_body() if method == "POST" else {}
+        payload = self.read_json_body() if method in {"POST", "PATCH", "DELETE"} else {}
 
         if method == "GET" and parts == ["health"]:
             return HTTPStatus.OK, {"ok": True, "service": "mimo-workflow-backend"}
@@ -72,6 +78,13 @@ class WorkflowRequestHandler(BaseHTTPRequestHandler):
         if method == "GET" and len(parts) == 2 and parts[0] == "jobs":
             return HTTPStatus.OK, {"job": self.backend.get_job(parts[1])}
 
+        if len(parts) == 2 and parts[0] == "projects":
+            project_id = parts[1]
+            if method == "PATCH":
+                return HTTPStatus.OK, self.backend.update_project(project_id, payload)
+            if method == "DELETE":
+                return HTTPStatus.OK, self.backend.delete_project(project_id)
+
         if len(parts) >= 3 and parts[0] == "projects":
             project_id = parts[1]
             subpath = parts[2:]
@@ -79,6 +92,12 @@ class WorkflowRequestHandler(BaseHTTPRequestHandler):
                 return HTTPStatus.OK, self.backend.get_status(project_id)
             if method == "GET" and subpath == ["snapshot"]:
                 return HTTPStatus.OK, self.backend.get_project(project_id)
+            if method == "POST" and subpath == ["activities"]:
+                return HTTPStatus.CREATED, self.backend.create_activity(project_id, payload)
+            if method == "PATCH" and len(subpath) == 2 and subpath[0] == "activities":
+                return HTTPStatus.OK, self.backend.update_activity(project_id, subpath[1], payload)
+            if method == "POST" and len(subpath) == 3 and subpath[0] == "activities" and subpath[2] == "select":
+                return HTTPStatus.OK, self.backend.select_activity(project_id, subpath[1])
             if method == "POST" and subpath == ["reference", "transcribe"]:
                 return HTTPStatus.ACCEPTED, self.backend.transcribe_reference(project_id, payload)
             if method == "POST" and subpath == ["reference", "text"]:
@@ -119,7 +138,7 @@ class WorkflowRequestHandler(BaseHTTPRequestHandler):
             "Access-Control-Allow-Origin",
             origin if origin in allowed_origins else "http://127.0.0.1:5173",
         )
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         if content_length is not None:
             self.send_header("Content-Length", str(content_length))

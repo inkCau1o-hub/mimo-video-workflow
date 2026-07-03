@@ -19,6 +19,7 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -31,6 +32,11 @@ button {
   color: #20242a;
   padding: 0 12px;
   cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
 }
 
 button:hover {
@@ -47,7 +53,12 @@ button.primary:hover {
   background: #343942;
 }
 
+button.danger {
+  color: #a01818;
+}
+
 input,
+select,
 textarea {
   width: 100%;
   border: 1px solid #d7dce2;
@@ -76,8 +87,8 @@ pre {
 
 .app-shell {
   min-height: 100vh;
-  display: grid;
-  grid-template-rows: auto auto 1fr;
+  display: flex;
+  flex-direction: column;
 }
 
 .top-bar {
@@ -143,7 +154,50 @@ pre {
   font-size: 13px;
 }
 
+.activity-bar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(280px, 360px) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 18px;
+  border-bottom: 1px solid #dfe3e8;
+  background: #fbfbfc;
+}
+
+.activity-title {
+  font-weight: 700;
+}
+
+.activity-controls {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) 96px;
+  gap: 8px;
+}
+
+.activity-steps {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.step-pill {
+  border: 1px solid #d7dce2;
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: #69717d;
+  background: #ffffff;
+  font-size: 12px;
+}
+
+.step-pill.ready {
+  color: #0f6b3e;
+  background: #eef8f1;
+  border-color: #bfe7cc;
+}
+
 .body-grid {
+  flex: 1;
   min-height: 0;
   display: grid;
   grid-template-columns: 224px minmax(560px, 1fr) 340px;
@@ -206,7 +260,7 @@ pre {
 
 .project-row {
   display: grid;
-  gap: 3px;
+  gap: 7px;
   width: 100%;
   height: auto;
   padding: 9px;
@@ -223,6 +277,39 @@ pre {
 .project-row.active {
   border-color: #aab4c0;
   background: #e9edf2;
+}
+
+.project-open {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  height: auto;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+}
+
+.project-open:hover {
+  background: transparent;
+}
+
+.project-row em {
+  color: #505966;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.project-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.project-actions button {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
 }
 
 .workspace {
@@ -311,6 +398,84 @@ pre {
   font-family: "SF Mono", Menlo, Consolas, monospace;
   font-size: 12px;
   line-height: 1.6;
+}
+
+.readout.compact-readout {
+  flex: 0;
+  min-height: 96px;
+}
+
+.queue-panel,
+.source-preview,
+.pipeline-grid {
+  border: 1px solid #edf0f3;
+  border-radius: 8px;
+  background: #fbfbfc;
+  padding: 12px;
+}
+
+.queue-header,
+.action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.queue-header span {
+  color: #69717d;
+  font-size: 12px;
+}
+
+.queue-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.queue-row {
+  display: grid;
+  gap: 3px;
+  padding: 9px;
+  border: 1px solid #edf0f3;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.queue-row span {
+  color: #69717d;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.source-preview p {
+  margin: 10px 0 0;
+  color: #323842;
+  line-height: 1.55;
+}
+
+.compact-list {
+  max-height: 260px;
+}
+
+.pipeline-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.pipeline-grid div {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid #edf0f3;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.pipeline-grid span {
+  color: #69717d;
+  font-size: 12px;
 }
 
 .shot-list,

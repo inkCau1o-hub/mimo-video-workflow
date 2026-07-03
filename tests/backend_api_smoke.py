@@ -185,6 +185,27 @@ def test_backend_http_workflow_chain():
             status, project_payload = request_json(base_url, "POST", "/projects", {"name": "服务化测试"})
             assert status == 201, project_payload
             project_id = project_payload["status"]["project_id"]
+            first_activity_id = project_payload["status"]["current_activity_id"]
+            assert project_payload["status"]["activity_count"] == 1
+            assert project_payload["project"]["activities"][0]["activity_id"] == first_activity_id
+
+            status, rename_payload = request_json(
+                base_url,
+                "PATCH",
+                f"/projects/{project_id}",
+                {"name": "服务化测试重命名"},
+            )
+            assert status == 200, rename_payload
+            assert rename_payload["status"]["name"] == "服务化测试重命名"
+
+            status, delete_candidate = request_json(base_url, "POST", "/projects", {"name": "删除测试"})
+            assert status == 201, delete_candidate
+            delete_id = delete_candidate["status"]["project_id"]
+            status, delete_payload = request_json(base_url, "DELETE", f"/projects/{delete_id}")
+            assert status == 200, delete_payload
+            assert delete_payload["deleted"] is True
+            assert Path(delete_payload["trash_path"]).exists()
+            assert delete_id not in {item["project_id"] for item in delete_payload["projects"]}
 
             state = server.backend.store.get_state(project_id)
             state.storyboard_analyzer = FakeStoryboardAnalyzer()
@@ -213,15 +234,35 @@ def test_backend_http_workflow_chain():
             status, payload = request_json(
                 base_url,
                 "POST",
+                f"/projects/{project_id}/activities",
+                {"name": "第二条活动"},
+            )
+            assert status == 201, payload
+            second_activity_id = payload["activity"]["activity_id"]
+            assert second_activity_id != first_activity_id
+            assert payload["status"]["current_activity_id"] == second_activity_id
+
+            status, payload = request_json(
+                base_url,
+                "POST",
                 f"/projects/{project_id}/reference/text",
                 {
-                    "text": "这是参考文案，强调智能窗帘的安静、方便和品质感。",
+                    "text": "这是第二条活动文案，强调活动之间不能互相覆盖。",
                     "product_name": "杜亚智能窗帘",
                     "keywords": ["智能", "安静"],
                 },
             )
             assert status == 200, payload
             assert payload["status"]["has_reference"] is True
+
+            status, payload = request_json(
+                base_url,
+                "POST",
+                f"/projects/{project_id}/activities/{first_activity_id}/select",
+            )
+            assert status == 200, payload
+            assert payload["status"]["current_activity_id"] == first_activity_id
+            assert "后端转写文本" in payload["project"]["reference_copy"]["source_text"]
 
             status, payload = request_json(
                 base_url,

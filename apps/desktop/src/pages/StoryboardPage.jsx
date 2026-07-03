@@ -1,9 +1,17 @@
 import { useState } from "react";
 
-export function StoryboardPage({ project, onAnalyzeStoryboard }) {
+function textPreview(value, maxLength = 360) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
+export function StoryboardPage({ activity, project, onAnalyzeStoryboard }) {
   const [duration, setDuration] = useState("30");
   const [shotCount, setShotCount] = useState("5");
-  const analysis = project?.storyboard_analysis;
+  const referenceText = activity?.reference_copy?.source_text || project?.reference_copy?.source_text || "";
+  const analysis = activity?.storyboard_analysis || project?.storyboard_analysis;
+  const canAnalyze = Boolean(project && referenceText.trim());
 
   return (
     <div className="page-grid two-column">
@@ -17,9 +25,17 @@ export function StoryboardPage({ project, onAnalyzeStoryboard }) {
             type="button"
             className="primary"
             onClick={() => onAnalyzeStoryboard({ target_duration_seconds: Number(duration), shot_count: Number(shotCount) })}
+            disabled={!canAnalyze}
           >
             分析分镜
           </button>
+        </div>
+        <div className="source-preview">
+          <div className="queue-header">
+            <strong>来自参考转写</strong>
+            <span>{referenceText ? `${referenceText.length} 字` : "未就绪"}</span>
+          </div>
+          <p>{textPreview(referenceText) || "请先在参考转写页生成或保存文案。"}</p>
         </div>
         <div className="field-row">
           <label>

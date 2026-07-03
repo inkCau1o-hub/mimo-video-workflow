@@ -1,8 +1,8 @@
 import { useState } from "react";
 
-export function MaterialLibraryPage({ project, onTagMaterials }) {
+export function MaterialLibraryPage({ activity, project, onTagMaterials }) {
   const [paths, setPaths] = useState("");
-  const assets = project?.material_assets || [];
+  const assets = activity?.material_assets || project?.material_assets || [];
 
   return (
     <div className="page-grid two-column">

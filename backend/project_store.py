@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -22,6 +23,7 @@ class ProjectStore:
     def __init__(self, root_dir: Optional[str | Path] = None):
         self.root_dir = Path(root_dir or Path(config.OUTPUT_DIR) / "api_projects").expanduser()
         self.root_dir.mkdir(parents=True, exist_ok=True)
+        self.trash_dir = self.root_dir / ".trash"
         self._states: Dict[str, WorkflowState] = {}
 
     def create_project(
@@ -64,18 +66,51 @@ class ProjectStore:
         project_path = Path(state.project.project_dir).expanduser() / "project.json"
         return state.save_project(project_path)
 
+    def update_project(self, project_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        state = self.get_state(project_id)
+        name = str(payload.get("name") or "").strip()
+        if name:
+            state.project.name = name
+        state._touch()
+        self.save_project(project_id)
+        return self.to_payload(project_id)
+
+    def delete_project(self, project_id: str) -> Dict[str, Any]:
+        state = self.get_state(project_id)
+        project_dir = Path(state.project.project_dir).expanduser()
+        if not project_dir.exists():
+            self._states.pop(project_id, None)
+            return {"deleted": True, "project_id": project_id, "trash_path": ""}
+
+        self.trash_dir.mkdir(parents=True, exist_ok=True)
+        target = self.trash_dir / project_dir.name
+        if target.exists():
+            target = self.trash_dir / f"{project_dir.name}.{uuid.uuid4().hex[:8]}"
+        shutil.move(str(project_dir), str(target))
+        self._states.pop(project_id, None)
+        return {
+            "deleted": True,
+            "project_id": project_id,
+            "trash_path": str(target),
+        }
+
     def project_status(self, project_id: str) -> Dict[str, Any]:
         state = self.get_state(project_id)
         project = state.project
+        activity = state.current_activity
         return {
             "project_id": project.project_id,
             "name": project.name,
             "project_dir": project.project_dir,
             "has_reference": bool(state.reference_text.strip()),
-            "storyboard_shots": len(project.storyboard_analysis.shots) if project.storyboard_analysis else 0,
-            "material_assets": len(project.material_assets),
-            "voiceover_segments": len(project.voiceover_segments),
-            "has_assembly_plan": project.assembly_plan is not None,
+            "storyboard_shots": len(state.storyboard_analysis.shots) if state.storyboard_analysis else 0,
+            "material_assets": len(state.material_assets),
+            "voiceover_segments": len(state.voiceover_segments),
+            "has_assembly_plan": state.assembly_plan is not None,
+            "current_activity_id": activity.activity_id,
+            "current_activity_name": activity.name,
+            "activity_count": len(project.activities),
+            "activity_status": dict(activity.status),
             "updated_at": project.updated_at,
         }
 
@@ -108,17 +143,12 @@ class ProjectStore:
             project_id = data.get("project_id")
             if project_id and project_id not in result:
                 state = WorkflowState.from_dict(data)
-                result[project_id] = {
-                    "project_id": state.project.project_id,
-                    "name": state.project.name,
-                    "project_dir": state.project.project_dir,
-                    "has_reference": bool(state.reference_text.strip()),
-                    "storyboard_shots": len(state.project.storyboard_analysis.shots)
-                    if state.project.storyboard_analysis
-                    else 0,
-                    "material_assets": len(state.project.material_assets),
-                    "voiceover_segments": len(state.project.voiceover_segments),
-                    "has_assembly_plan": state.project.assembly_plan is not None,
-                    "updated_at": state.project.updated_at,
-                }
-        return result
+                self._states[project_id] = state
+                result[project_id] = self.project_status(project_id)
+        return dict(
+            sorted(
+                result.items(),
+                key=lambda item: item[1].get("updated_at") or "",
+                reverse=True,
+            )
+        )

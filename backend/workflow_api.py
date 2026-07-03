@@ -51,6 +51,50 @@ class WorkflowBackend:
     def get_status(self, project_id: str) -> Dict[str, Any]:
         return self.store.project_status(project_id)
 
+    def update_project(self, project_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
+        return self.store.update_project(project_id, dict(payload))
+
+    def delete_project(self, project_id: str) -> Dict[str, Any]:
+        deleted = self.store.delete_project(project_id)
+        return {**deleted, "projects": list(self.store.list_projects().values())}
+
+    def create_activity(self, project_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
+        state = self.store.get_state(project_id)
+        activity = state.create_activity(str(payload.get("name") or ""))
+        self.store.save_project(project_id)
+        return {
+            "activity": activity.to_dict(),
+            "status": self.store.project_status(project_id),
+            "project": state.to_dict(),
+        }
+
+    def update_activity(self, project_id: str, activity_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
+        state = self.store.get_state(project_id)
+        activity = state.get_activity(activity_id)
+        if activity is None:
+            raise KeyError(f"activity not found: {activity_id}")
+        name = str(payload.get("name") or "").strip()
+        if name:
+            activity.name = name
+        state._touch_activity(activity)
+        state._touch()
+        self.store.save_project(project_id)
+        return {
+            "activity": activity.to_dict(),
+            "status": self.store.project_status(project_id),
+            "project": state.to_dict(),
+        }
+
+    def select_activity(self, project_id: str, activity_id: str) -> Dict[str, Any]:
+        state = self.store.get_state(project_id)
+        activity = state.set_current_activity(activity_id)
+        self.store.save_project(project_id)
+        return {
+            "activity": activity.to_dict(),
+            "status": self.store.project_status(project_id),
+            "project": state.to_dict(),
+        }
+
     def set_reference_text(self, project_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
         state = self.store.get_state(project_id)
         state.set_reference_text(

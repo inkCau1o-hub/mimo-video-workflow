@@ -13,6 +13,14 @@ export class ApiClient {
     return this.request("POST", path, payload);
   }
 
+  async patch(path, payload = {}) {
+    return this.request("PATCH", path, payload);
+  }
+
+  async delete(path, payload = {}) {
+    return this.request("DELETE", path, payload);
+  }
+
   async request(method, path, payload) {
     const options = { method, headers: {} };
     if (payload !== undefined && method !== "GET") {

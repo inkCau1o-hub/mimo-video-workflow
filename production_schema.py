@@ -230,6 +230,23 @@ class AssemblyPlan(JsonDataclassMixin):
 
 
 @dataclass
+class WorkflowActivity(JsonDataclassMixin):
+    activity_id: str = ""
+    name: str = ""
+    reference_videos: List[str] = field(default_factory=list)
+    transcript: Dict[str, Any] = field(default_factory=dict)
+    reference_copy: Optional[ReferenceCopy] = None
+    storyboard_analysis: Optional[StoryboardAnalysis] = None
+    material_assets: List[MaterialAsset] = field(default_factory=list)
+    voiceover_segments: List[VoiceoverSegment] = field(default_factory=list)
+    assembly_plan: Optional[AssemblyPlan] = None
+    status: Dict[str, str] = field(default_factory=dict)
+    created_at: str = field(default_factory=_now_iso)
+    updated_at: str = field(default_factory=_now_iso)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class ProductionProject(JsonDataclassMixin):
     project_id: str = ""
     name: str = ""
@@ -239,7 +256,9 @@ class ProductionProject(JsonDataclassMixin):
     material_assets: List[MaterialAsset] = field(default_factory=list)
     voiceover_segments: List[VoiceoverSegment] = field(default_factory=list)
     assembly_plan: Optional[AssemblyPlan] = None
-    schema_version: int = 1
+    activities: List[WorkflowActivity] = field(default_factory=list)
+    current_activity_id: str = ""
+    schema_version: int = 2
     created_at: str = field(default_factory=_now_iso)
     updated_at: str = field(default_factory=_now_iso)
     metadata: Dict[str, Any] = field(default_factory=dict)

@@ -18,6 +18,7 @@ from production_schema import (
     ReferenceCopy,
     StoryboardAnalysis,
     VoiceoverSegment,
+    WorkflowActivity,
     load_json,
     save_json,
 )
@@ -59,32 +60,81 @@ class WorkflowState:
         self.output_dir = str(base_output)
         if not self.project.project_dir:
             self.project.project_dir = str(base_output / _safe_name(self.project.name))
+        self.ensure_current_activity()
 
     @property
     def project_dir(self) -> Path:
         return Path(self.project.project_dir).expanduser()
 
     @property
+    def current_activity(self) -> WorkflowActivity:
+        return self.ensure_current_activity()
+
+    @property
     def reference_text(self) -> str:
-        if not self.project.reference_copy:
+        reference = self.current_activity.reference_copy or self.project.reference_copy
+        if not reference:
             return ""
-        return self.project.reference_copy.source_text
+        return reference.source_text
 
     @property
     def storyboard_analysis(self) -> Optional[StoryboardAnalysis]:
-        return self.project.storyboard_analysis
+        return self.current_activity.storyboard_analysis or self.project.storyboard_analysis
 
     @property
     def material_assets(self) -> List[MaterialAsset]:
-        return self.project.material_assets
+        return self.current_activity.material_assets or self.project.material_assets
 
     @property
     def voiceover_segments(self) -> List[VoiceoverSegment]:
-        return self.project.voiceover_segments
+        return self.current_activity.voiceover_segments or self.project.voiceover_segments
 
     @property
     def assembly_plan(self) -> Optional[AssemblyPlan]:
-        return self.project.assembly_plan
+        return self.current_activity.assembly_plan or self.project.assembly_plan
+
+    def ensure_current_activity(self) -> WorkflowActivity:
+        if not self.project.activities:
+            activity = self._activity_from_legacy()
+            self.project.activities = [activity]
+            self.project.current_activity_id = activity.activity_id
+
+        activity = self.get_activity(self.project.current_activity_id)
+        if activity is None:
+            activity = self.project.activities[0]
+            self.project.current_activity_id = activity.activity_id
+        activity.status = _activity_status(activity)
+        self._sync_legacy_from_activity(activity)
+        return activity
+
+    def get_activity(self, activity_id: str) -> Optional[WorkflowActivity]:
+        for activity in self.project.activities:
+            if activity.activity_id == activity_id:
+                return activity
+        return None
+
+    def create_activity(self, name: str = "", make_current: bool = True) -> WorkflowActivity:
+        activity = WorkflowActivity(
+            activity_id=f"activity_{uuid.uuid4().hex[:8]}",
+            name=name.strip() or f"活动 {len(self.project.activities) + 1}",
+            status=_activity_status(),
+        )
+        self.project.activities.append(activity)
+        if make_current:
+            self.project.current_activity_id = activity.activity_id
+            self._sync_legacy_from_activity(activity)
+        self._touch_activity(activity)
+        self._touch()
+        return activity
+
+    def set_current_activity(self, activity_id: str) -> WorkflowActivity:
+        activity = self.get_activity(activity_id)
+        if activity is None:
+            raise KeyError(f"activity not found: {activity_id}")
+        self.project.current_activity_id = activity.activity_id
+        self._sync_legacy_from_activity(activity)
+        self._touch()
+        return activity
 
     def set_reference_text(
         self,
@@ -106,7 +156,22 @@ class WorkflowState:
             language=language,
             metadata=dict(metadata or {}),
         )
+        activity = self.current_activity
+        activity.reference_copy = reference
+        activity.transcript = {
+            "text": reference.source_text,
+            "source": source_path,
+            "created_at": reference.created_at,
+            "title": title,
+            "product_name": product_name,
+            "keywords": [str(item) for item in (keywords or []) if str(item).strip()],
+        }
+        videos = _as_list((metadata or {}).get("videos") if isinstance(metadata, Mapping) else None)
+        if videos:
+            activity.reference_videos = videos
+        activity.status = _activity_status(activity)
         self.project.reference_copy = reference
+        self._touch_activity(activity)
         self._touch()
         return reference
 
@@ -133,6 +198,9 @@ class WorkflowState:
             **kwargs,
         )
         analysis = _coerce_storyboard_analysis(result, reference)
+        activity = self.current_activity
+        activity.storyboard_analysis = analysis
+        activity.status = _activity_status(activity)
         self.project.storyboard_analysis = analysis
 
         if save:
@@ -141,6 +209,7 @@ class WorkflowState:
             analysis.metadata["json_path"] = str(path)
             save_json(analysis, path)
 
+        self._touch_activity(activity)
         self._touch()
         return analysis
 
@@ -184,6 +253,9 @@ class WorkflowState:
             )
 
         assets = [_coerce_material_asset(item) for item in (result or [])]
+        activity = self.current_activity
+        activity.material_assets = assets
+        activity.status = _activity_status(activity)
         self.project.material_assets = assets
 
         if save:
@@ -197,6 +269,7 @@ class WorkflowState:
             self.project.metadata = dict(self.project.metadata)
             self.project.metadata["material_catalog_path"] = str(path)
 
+        self._touch_activity(activity)
         self._touch()
         return assets
 
@@ -271,6 +344,9 @@ class WorkflowState:
             )
             cursor += max(duration, 0.0)
 
+        activity = self.current_activity
+        activity.voiceover_segments = voiceovers
+        activity.status = _activity_status(activity)
         self.project.voiceover_segments = voiceovers
 
         if save:
@@ -281,6 +357,7 @@ class WorkflowState:
             self.project.metadata["voiceover_dir"] = str(voiceover_dir)
             self.project.metadata["voiceover_segments_path"] = str(path)
 
+        self._touch_activity(activity)
         self._touch()
         return voiceovers
 
@@ -304,8 +381,8 @@ class WorkflowState:
             planning_worker,
             ("create_plan", "build_plan"),
             analysis,
-            self.project.material_assets,
-            self.project.voiceover_segments,
+            self.material_assets,
+            self.voiceover_segments,
             output_path=str(output),
             as_schema=True,
             **kwargs,
@@ -334,6 +411,9 @@ class WorkflowState:
         plan.output_path = str(output)
         plan.metadata = dict(plan.metadata)
         plan.metadata["renderer"] = renderer_metadata
+        activity = self.current_activity
+        activity.assembly_plan = plan
+        activity.status = _activity_status(activity)
         self.project.assembly_plan = plan
 
         if save:
@@ -341,6 +421,7 @@ class WorkflowState:
             plan.metadata["json_path"] = str(path)
             save_json(plan, path)
 
+        self._touch_activity(activity)
         self._touch()
         return plan
 
@@ -376,19 +457,57 @@ class WorkflowState:
         return cls(project=project, output_dir=output_dir, **dependencies)
 
     def _require_reference_copy(self) -> ReferenceCopy:
-        if not self.project.reference_copy:
+        reference = self.current_activity.reference_copy or self.project.reference_copy
+        if not reference:
             raise ValueError("reference_text is required")
-        if not self.project.reference_copy.source_text.strip():
+        if not reference.source_text.strip():
             raise ValueError("reference_text is required")
-        return self.project.reference_copy
+        return reference
 
     def _require_storyboard_analysis(self) -> StoryboardAnalysis:
-        if not self.project.storyboard_analysis:
+        analysis = self.current_activity.storyboard_analysis or self.project.storyboard_analysis
+        if not analysis:
             raise ValueError("storyboard_analysis is required")
-        return self.project.storyboard_analysis
+        return analysis
 
     def _touch(self) -> None:
         self.project.updated_at = _now_iso()
+
+    def _touch_activity(self, activity: WorkflowActivity) -> None:
+        activity.updated_at = _now_iso()
+
+    def _activity_from_legacy(self) -> WorkflowActivity:
+        reference = self.project.reference_copy
+        transcript: Dict[str, Any] = {}
+        if reference:
+            transcript = {
+                "text": reference.source_text,
+                "source": reference.source_path,
+                "created_at": reference.created_at,
+                "title": reference.title,
+                "product_name": reference.product_name,
+                "keywords": list(reference.keywords),
+            }
+        activity = WorkflowActivity(
+            activity_id=f"activity_{uuid.uuid4().hex[:8]}",
+            name="默认活动",
+            reference_videos=_as_list(reference.metadata.get("videos")) if reference else [],
+            transcript=transcript,
+            reference_copy=reference,
+            storyboard_analysis=self.project.storyboard_analysis,
+            material_assets=list(self.project.material_assets or []),
+            voiceover_segments=list(self.project.voiceover_segments or []),
+            assembly_plan=self.project.assembly_plan,
+        )
+        activity.status = _activity_status(activity)
+        return activity
+
+    def _sync_legacy_from_activity(self, activity: WorkflowActivity) -> None:
+        self.project.reference_copy = activity.reference_copy
+        self.project.storyboard_analysis = activity.storyboard_analysis
+        self.project.material_assets = list(activity.material_assets or [])
+        self.project.voiceover_segments = list(activity.voiceover_segments or [])
+        self.project.assembly_plan = activity.assembly_plan
 
 
 def _call_method(obj: Any, names: Sequence[str], *args: Any, **kwargs: Any) -> Any:
@@ -512,6 +631,29 @@ def _to_optional_float(value: Any) -> Optional[float]:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _activity_status(activity: Optional[WorkflowActivity] = None) -> Dict[str, str]:
+    if activity is None:
+        return {
+            "transcript": "pending",
+            "storyboard": "pending",
+            "materials": "pending",
+            "voiceover": "pending",
+            "assembly": "pending",
+        }
+    reference_text = ""
+    if activity.reference_copy:
+        reference_text = activity.reference_copy.source_text
+    elif isinstance(activity.transcript, Mapping):
+        reference_text = str(activity.transcript.get("text") or "")
+    return {
+        "transcript": "ready" if reference_text.strip() else "pending",
+        "storyboard": "ready" if activity.storyboard_analysis and activity.storyboard_analysis.shots else "pending",
+        "materials": "ready" if activity.material_assets else "pending",
+        "voiceover": "ready" if activity.voiceover_segments else "pending",
+        "assembly": "ready" if activity.assembly_plan else "pending",
+    }
 
 
 __all__ = ["WorkflowState"]
