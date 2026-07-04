@@ -2,6 +2,7 @@ import json
 import sys
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -157,6 +158,32 @@ def test_job_manager_reports_failures():
     assert job.status == "failed"
     assert "boom" in job.error
     assert job.logs
+
+
+def test_job_manager_cancels_running_jobs():
+    manager = JobManager(run_inline=False)
+    started = threading.Event()
+
+    def wait_for_cancel(context):
+        started.set()
+        while not context.is_cancelled():
+            time.sleep(0.01)
+        context.raise_if_cancelled()
+
+    job = manager.submit("test.cancel", "project_x", wait_for_cancel)
+    assert started.wait(timeout=2), "job did not start"
+    cancelled = manager.cancel(job.job_id)
+    assert cancelled.cancel_requested is True
+
+    for _ in range(200):
+        current = manager.get(job.job_id)
+        if current.status == "cancelled":
+            break
+        time.sleep(0.01)
+
+    current = manager.get(job.job_id)
+    assert current.status == "cancelled", current
+    assert current.cancel_requested is True
 
 
 def test_backend_http_workflow_chain():
@@ -422,6 +449,7 @@ def test_backend_http_workflow_chain():
 
 def main():
     test_job_manager_reports_failures()
+    test_job_manager_cancels_running_jobs()
     test_backend_http_workflow_chain()
     print("backend_api_smoke: ok")
 

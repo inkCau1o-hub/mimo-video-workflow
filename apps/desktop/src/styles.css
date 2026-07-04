@@ -371,6 +371,13 @@ pre {
   margin: 4px 0 0;
 }
 
+.button-group {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .field-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(120px, 1fr));
@@ -405,9 +412,53 @@ pre {
   min-height: 96px;
 }
 
+.hidden-input {
+  display: none;
+}
+
+.next-step {
+  display: grid;
+  grid-template-columns: minmax(120px, auto) minmax(180px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #d9e5f8;
+  border-radius: 8px;
+  background: #f5f9ff;
+  padding: 10px;
+}
+
+.next-step span {
+  color: #505966;
+  font-size: 12px;
+}
+
+.drop-zone {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  min-height: 112px;
+  border: 1px dashed #b8c2cf;
+  border-radius: 8px;
+  background: #fbfbfc;
+  color: #20242a;
+  text-align: center;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.drop-zone span {
+  color: #69717d;
+  font-size: 12px;
+}
+
+.drop-zone.dragging {
+  border-color: #20242a;
+  background: #f1f5fb;
+}
+
 .queue-panel,
 .source-preview,
-.pipeline-grid {
+.pipeline-grid,
+.job-progress {
   border: 1px solid #edf0f3;
   border-radius: 8px;
   background: #fbfbfc;
@@ -435,7 +486,9 @@ pre {
 
 .queue-row {
   display: grid;
-  gap: 3px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
   padding: 9px;
   border: 1px solid #edf0f3;
   border-radius: 8px;
@@ -446,6 +499,31 @@ pre {
   color: #69717d;
   font-size: 12px;
   overflow-wrap: anywhere;
+}
+
+.inline-control {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 160px);
+  align-items: center;
+  gap: 8px;
+  color: #69717d;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.progress-track {
+  height: 8px;
+  margin: 10px 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e5e9ee;
+}
+
+.progress-track div {
+  height: 100%;
+  border-radius: inherit;
+  background: #20242a;
+  transition: width 0.2s ease;
 }
 
 .source-preview p {

@@ -133,8 +133,10 @@ class WorkflowBackend:
             transcripts = []
             total = max(len(videos), 1)
             for index, video_path in enumerate(videos, start=1):
+                context.raise_if_cancelled()
                 context.update(index / total * 85.0, f"transcribing {index}/{total}")
                 result = transcribe_video(video_path, output_dir, model_size)
+                context.raise_if_cancelled()
                 transcripts.append(f"===== {Path(video_path).stem} =====\n{result['transcript']}")
                 context.log(f"transcribed: {video_path}")
             merged = "\n\n".join(transcripts).strip()
@@ -244,8 +246,10 @@ class WorkflowBackend:
             outputs = []
             total = max(len(videos), 1)
             for index, video_path in enumerate(videos, start=1):
+                context.raise_if_cancelled()
                 context.update(index / total * 80.0, f"processing {index}/{total}")
                 transcript = transcribe_video(video_path, output_dir, model_size)["transcript"]
+                context.raise_if_cancelled()
                 work_text = TextCleaner().clean_text(transcript) if enable_cleaning else transcript
                 prompt = build_rewrite_prompt(work_text, product_name, selling_points, requirements)
                 rewrite = AIRewriter().rewrite_with_prompt(prompt)
@@ -421,6 +425,9 @@ class WorkflowBackend:
 
     def get_job(self, job_id: str) -> Dict[str, Any]:
         return self.jobs.get(job_id).to_dict()
+
+    def cancel_job(self, job_id: str) -> Dict[str, Any]:
+        return self.jobs.cancel(job_id).to_dict()
 
 
 def transcribe_video(video_path: str, output_dir: str, model_size: str) -> Dict[str, Any]:

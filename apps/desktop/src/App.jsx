@@ -40,6 +40,10 @@ function formatAgentResponse(payload) {
   return lines.filter(Boolean).join("\n\n") || "命令已处理。";
 }
 
+function isTerminalJob(job) {
+  return ["succeeded", "failed", "cancelled"].includes(job?.status);
+}
+
 export default function App() {
   const [backendUrl] = useState(DEFAULT_BACKEND_URL);
   const [activePage, setActivePage] = useState("reference");
@@ -58,6 +62,11 @@ export default function App() {
     const activities = project?.activities || [];
     return activities.find((item) => item.activity_id === currentActivityId) || activities[0] || null;
   }, [project, currentActivityId]);
+  const referenceJob = useMemo(() => {
+    return jobs.find((job) => job.job_type === "reference.transcribe" && !isTerminalJob(job))
+      || jobs.find((job) => job.job_type === "reference.transcribe")
+      || null;
+  }, [jobs]);
 
   const addMessage = useCallback((role, text) => {
     setMessages((items) => [...items, { role, text }]);
@@ -192,7 +201,7 @@ export default function App() {
       const payload = await api.get(`/jobs/${jobId}`);
       const job = payload.job;
       setJobs((items) => [job, ...items.filter((item) => item.job_id !== job.job_id)].slice(0, 12));
-      if (job.status === "succeeded" || job.status === "failed") {
+      if (isTerminalJob(job)) {
         if (projectId) {
           const snapshot = await api.get(`/projects/${projectId}/snapshot`);
           setStatus(snapshot.status);
@@ -204,6 +213,19 @@ export default function App() {
     }
     throw new Error(`job polling timed out: ${jobId}`);
   }, [api, projectId]);
+
+  const cancelJob = useCallback(async (jobId) => {
+    if (!jobId) return;
+    try {
+      const payload = await api.post(`/jobs/${jobId}/cancel`, {});
+      const job = payload.job;
+      setJobs((items) => [job, ...items.filter((item) => item.job_id !== job.job_id)].slice(0, 12));
+      addMessage("system", `已请求停止任务 ${jobId}`);
+    } catch (err) {
+      setError(err.message);
+      addMessage("system", `停止任务失败: ${err.message}`);
+    }
+  }, [api, addMessage]);
 
   const submitProjectJob = useCallback(async (path, payload, label) => {
     if (!projectId) {
@@ -289,14 +311,20 @@ export default function App() {
     reference: (
       <ReferencePage
         activity={currentActivity}
+        job={referenceJob}
         project={project}
+        onCancelJob={cancelJob}
+        onGoStoryboard={() => setActivePage("storyboard")}
         onSetReferenceVideos={setReferenceVideos}
         onSetReferenceText={setReferenceText}
-        onTranscribeReference={(paths) => submitProjectJob(
-          "/reference/transcribe",
-          { videos: splitLines(paths), model_size: "medium" },
-          "转写参考"
-        )}
+        onTranscribeReference={(payload) => {
+          const videos = Array.isArray(payload?.videos) ? payload.videos : splitLines(payload);
+          return submitProjectJob(
+            "/reference/transcribe",
+            { videos: splitLines(videos), model_size: payload?.model_size || "medium" },
+            "转写参考"
+          );
+        }}
       />
     ),
     storyboard: (

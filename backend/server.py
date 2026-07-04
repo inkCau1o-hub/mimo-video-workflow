@@ -78,6 +78,9 @@ class WorkflowRequestHandler(BaseHTTPRequestHandler):
         if method == "GET" and len(parts) == 2 and parts[0] == "jobs":
             return HTTPStatus.OK, {"job": self.backend.get_job(parts[1])}
 
+        if method == "POST" and len(parts) == 3 and parts[0] == "jobs" and parts[2] == "cancel":
+            return HTTPStatus.OK, {"job": self.backend.cancel_job(parts[1])}
+
         if len(parts) == 2 and parts[0] == "projects":
             project_id = parts[1]
             if method == "PATCH":

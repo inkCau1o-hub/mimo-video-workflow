@@ -12,6 +12,10 @@ def _now_iso() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
+class JobCancelledError(RuntimeError):
+    pass
+
+
 @dataclass
 class JobRecord:
     job_id: str
@@ -23,6 +27,7 @@ class JobRecord:
     result: Any = None
     error: str = ""
     logs: List[str] = field(default_factory=list)
+    cancel_requested: bool = False
     created_at: str = field(default_factory=_now_iso)
     updated_at: str = field(default_factory=_now_iso)
 
@@ -37,6 +42,7 @@ class JobRecord:
             "result": self.result,
             "error": self.error,
             "logs": list(self.logs),
+            "cancel_requested": self.cancel_requested,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
@@ -52,6 +58,13 @@ class JobContext:
 
     def log(self, message: str) -> None:
         self._manager.log(self.record.job_id, message)
+
+    def is_cancelled(self) -> bool:
+        return self._manager.is_cancel_requested(self.record.job_id)
+
+    def raise_if_cancelled(self) -> None:
+        if self.is_cancelled():
+            raise JobCancelledError("job cancelled")
 
 
 class JobManager:
@@ -93,6 +106,24 @@ class JobManager:
         with self._lock:
             return list(self._jobs.values())
 
+    def cancel(self, job_id: str) -> JobRecord:
+        with self._lock:
+            record = self.get(job_id)
+            if record.status in {"succeeded", "failed", "cancelled"}:
+                return record
+            record.cancel_requested = True
+            record.logs.append("cancel requested")
+            record.message = "cancelling"
+            if record.status == "queued":
+                record.status = "cancelled"
+                record.message = "cancelled"
+            record.updated_at = _now_iso()
+            return record
+
+    def is_cancel_requested(self, job_id: str) -> bool:
+        with self._lock:
+            return self.get(job_id).cancel_requested
+
     def update(self, job_id: str, progress: Optional[float] = None, message: str = "") -> None:
         with self._lock:
             record = self.get(job_id)
@@ -111,13 +142,27 @@ class JobManager:
     def _run(self, job_id: str, func: Callable[[JobContext], Any]) -> None:
         record = self.get(job_id)
         with self._lock:
+            if record.cancel_requested:
+                record.status = "cancelled"
+                record.message = "cancelled"
+                record.updated_at = _now_iso()
+                return
             record.status = "running"
             record.message = "running"
             record.updated_at = _now_iso()
 
         context = JobContext(self, record)
         try:
+            context.raise_if_cancelled()
             result = func(context)
+            context.raise_if_cancelled()
+        except JobCancelledError as exc:
+            with self._lock:
+                record.status = "cancelled"
+                record.error = str(exc)
+                record.message = "cancelled"
+                record.updated_at = _now_iso()
+            return
         except Exception as exc:
             with self._lock:
                 record.status = "failed"
@@ -128,8 +173,12 @@ class JobManager:
             return
 
         with self._lock:
-            record.status = "succeeded"
-            record.progress = 100.0
-            record.message = "succeeded"
-            record.result = result
+            if record.cancel_requested:
+                record.status = "cancelled"
+                record.message = "cancelled"
+            else:
+                record.status = "succeeded"
+                record.progress = 100.0
+                record.message = "succeeded"
+                record.result = result
             record.updated_at = _now_iso()

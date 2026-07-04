@@ -87,11 +87,27 @@ def test_app_contains_required_product_regions():
         assert component in app, f"App.jsx does not wire {component}"
 
 
+def test_reference_page_contains_full_entry_controls():
+    reference_page = (APP_DIR / "src" / "pages" / "ReferencePage.jsx").read_text(encoding="utf-8")
+    for text in (
+        "拖拽视频文件到这里",
+        "选择视频",
+        "选择文件夹",
+        "Whisper模型",
+        "开始转写",
+        "停止任务",
+        "发送到分镜",
+        "下一步：生成分镜",
+    ):
+        assert text in reference_page, f"ReferencePage missing control text: {text}"
+
+
 def main():
     test_required_files_exist()
     test_package_scripts_and_dependencies()
     test_relative_import_graph_resolves()
     test_app_contains_required_product_regions()
+    test_reference_page_contains_full_entry_controls()
     print("frontend_prototype_smoke: ok")
 
 
