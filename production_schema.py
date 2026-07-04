@@ -250,6 +250,7 @@ class WorkflowActivity(JsonDataclassMixin):
     reference_videos: List[str] = field(default_factory=list)
     transcript: Dict[str, Any] = field(default_factory=dict)
     reference_copy: Optional[ReferenceCopy] = None
+    copywriting: Dict[str, Any] = field(default_factory=dict)
     storyboard_analysis: Optional[StoryboardAnalysis] = None
     material_assets: List[MaterialAsset] = field(default_factory=list)
     voiceover_segments: List[VoiceoverSegment] = field(default_factory=list)

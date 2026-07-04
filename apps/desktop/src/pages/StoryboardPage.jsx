@@ -1,13 +1,14 @@
 import { useState } from "react";
-import { pickStoryboardAnalysis, productProfile, referenceText as selectReferenceText } from "../workflowData";
+import { finalCopyText, pickStoryboardAnalysis, productProfile, rewrittenCopy } from "../workflowData";
 
 export function StoryboardPage({ activity, project, onAnalyzeStoryboard }) {
   const [duration, setDuration] = useState("30");
   const [shotCount, setShotCount] = useState("5");
-  const referenceText = selectReferenceText(activity, project);
+  const inputText = finalCopyText(activity, project);
+  const rewrite = rewrittenCopy(activity);
   const profile = productProfile(project);
   const analysis = pickStoryboardAnalysis(activity, project);
-  const canAnalyze = Boolean(project && referenceText.trim());
+  const canAnalyze = Boolean(project && inputText.trim());
 
   return (
     <div className="page-grid two-column">
@@ -29,9 +30,9 @@ export function StoryboardPage({ activity, project, onAnalyzeStoryboard }) {
         <div className="source-preview">
           <div className="queue-header">
             <strong>输入状态</strong>
-            <span>{referenceText ? `${referenceText.length} 字` : "未就绪"}</span>
+            <span>{inputText ? `${inputText.length} 字` : "未就绪"}</span>
           </div>
-          <p>{referenceText ? `将使用当前活动已保存的转写结果，并结合 ${profile.product_name || "项目产品"} 的产品资料生成分镜。` : "请先在参考转写页生成文案。"}</p>
+          <p>{inputText ? `将使用${rewrite ? "文案处理成稿" : "当前活动转写结果"}，并结合 ${profile.product_name || "项目产品"} 的产品资料生成分镜。` : "请先完成参考转写和文案处理。"}</p>
         </div>
         <div className="field-row">
           <label>

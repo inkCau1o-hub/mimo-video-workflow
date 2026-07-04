@@ -22,6 +22,23 @@ export function referenceText(activity, project) {
   return pickReferenceCopy(activity, project)?.source_text || "";
 }
 
+export function copywriting(activity) {
+  return activity?.copywriting || {};
+}
+
+export function rewrittenCopy(activity) {
+  return copywriting(activity)?.rewrite?.text || "";
+}
+
+export function generatedTitles(activity) {
+  const items = copywriting(activity)?.titles?.items;
+  return Array.isArray(items) ? items : [];
+}
+
+export function finalCopyText(activity, project) {
+  return rewrittenCopy(activity) || referenceText(activity, project);
+}
+
 export function productProfile(project) {
   return project?.product_profile || {};
 }

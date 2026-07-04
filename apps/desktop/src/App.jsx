@@ -8,6 +8,7 @@ import { ProjectStatusPanel } from "./components/ProjectStatusPanel";
 import { Sidebar } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
 import { AssemblyPage } from "./pages/AssemblyPage";
+import { CopywritingPage } from "./pages/CopywritingPage";
 import { MaterialLibraryPage } from "./pages/MaterialLibraryPage";
 import { ProductProfilePage } from "./pages/ProductProfilePage";
 import { ReferencePage } from "./pages/ReferencePage";
@@ -33,6 +34,7 @@ function formatAgentResponse(payload) {
       [
         `当前活动: ${payload.status.current_activity_name || "未选择"}`,
         `参考文案: ${payload.status.has_reference ? "已就绪" : "未设置"}`,
+        `成稿文案: ${payload.status.has_copywriting ? "已生成" : "未生成"}`,
         `分镜: ${payload.status.storyboard_shots || 0} 条`,
         `配音: ${payload.status.voiceover_segments || 0} 条`,
         `合成计划: ${payload.status.has_assembly_plan ? "已生成" : "未生成"}`,
@@ -69,6 +71,11 @@ export default function App() {
   const referenceJob = useMemo(() => {
     return jobs.find((job) => job.job_type === "reference.transcribe" && !isTerminalJob(job))
       || jobs.find((job) => job.job_type === "reference.transcribe")
+      || null;
+  }, [jobs]);
+  const copywritingJob = useMemo(() => {
+    return jobs.find((job) => ["copy.rewrite", "copy.titles"].includes(job.job_type) && !isTerminalJob(job))
+      || jobs.find((job) => ["copy.rewrite", "copy.titles"].includes(job.job_type))
       || null;
   }, [jobs]);
 
@@ -372,7 +379,7 @@ export default function App() {
         project={project}
         validation={referenceValidation}
         onCancelJob={cancelJob}
-        onGoStoryboard={() => setActivePage("storyboard")}
+        onGoCopywriting={() => setActivePage("copywriting")}
         onValidateReferenceVideos={validateReferenceVideos}
         onSetReferenceVideos={setReferenceVideos}
         onUploadReferenceVideos={uploadReferenceVideos}
@@ -391,6 +398,16 @@ export default function App() {
             );
           });
         }}
+      />
+    ),
+    copywriting: (
+      <CopywritingPage
+        activity={currentActivity}
+        job={copywritingJob}
+        onGenerateTitles={(payload) => submitProjectJob("/copy/titles", payload, "标题生成")}
+        onGoStoryboard={() => setActivePage("storyboard")}
+        onRewriteCopy={(payload) => submitProjectJob("/copy/rewrite", payload, "文案改写")}
+        project={project}
       />
     ),
     storyboard: (

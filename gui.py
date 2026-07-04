@@ -26,7 +26,6 @@ import gui_pages
 from media_assembler import FFmpegAssemblyRenderer
 from multimodal_interfaces import MaterialAnalyzer
 from workflow_state import WorkflowState
-from text_cleaner import TextCleaner
 from title_generator import TitleGenerator
 
 
@@ -278,14 +277,10 @@ class VideoScriptGUI:
 
         options = ttk.Frame(right)
         options.grid(row=4, column=1, sticky=tk.W, padx=10, pady=(8, 5))
-        self.enable_cleaning_var = tk.BooleanVar(value=True)
         self.enable_titles_var = tk.BooleanVar(value=True)
         self.save_transcript_var = tk.BooleanVar(value=True)
-        self.save_clean_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(options, text="文本清洗", variable=self.enable_cleaning_var).pack(side=tk.LEFT, padx=(0, 10))
-        ttk.Checkbutton(options, text="生成标题", variable=self.enable_titles_var).pack(side=tk.LEFT, padx=10)
+        ttk.Checkbutton(options, text="生成标题", variable=self.enable_titles_var).pack(side=tk.LEFT, padx=(0, 10))
         ttk.Checkbutton(options, text="保存原文", variable=self.save_transcript_var).pack(side=tk.LEFT, padx=10)
-        ttk.Checkbutton(options, text="保存清洗文本", variable=self.save_clean_var).pack(side=tk.LEFT, padx=10)
 
         action_area = ttk.Frame(right)
         action_area.grid(row=5, column=1, sticky=tk.EW, padx=10, pady=(8, 8))
@@ -530,14 +525,10 @@ class VideoScriptGUI:
 
         options = ttk.Frame(right)
         options.grid(row=4, column=1, sticky=tk.W, padx=10, pady=(8, 5))
-        self.enable_cleaning_var = tk.BooleanVar(value=True)
         self.enable_titles_var = tk.BooleanVar(value=True)
         self.save_transcript_var = tk.BooleanVar(value=True)
-        self.save_clean_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(options, text="文本清洗", variable=self.enable_cleaning_var).pack(side=tk.LEFT, padx=(0, 10))
-        ttk.Checkbutton(options, text="生成标题", variable=self.enable_titles_var).pack(side=tk.LEFT, padx=10)
+        ttk.Checkbutton(options, text="生成标题", variable=self.enable_titles_var).pack(side=tk.LEFT, padx=(0, 10))
         ttk.Checkbutton(options, text="保存原文", variable=self.save_transcript_var).pack(side=tk.LEFT, padx=10)
-        ttk.Checkbutton(options, text="保存清洗文本", variable=self.save_clean_var).pack(side=tk.LEFT, padx=10)
 
         action_row = self.make_button_bar(right)
         action_row.grid(row=5, column=1, sticky=tk.EW, padx=8, pady=(10, 0))
@@ -1391,10 +1382,8 @@ class VideoScriptGUI:
                     "  视觉模型 mimo-v2.5",
                     "  BaseURL https://token-plan-cn.xiaomimimo.com/v1",
                     "  输出目录 ~/Documents/短视频文案输出",
-                    "  开启清洗 / 关闭清洗",
                     "  开启标题 / 关闭标题",
                     "  保存原文 / 不保存原文",
-                    "  保存清洗文本 / 不保存清洗文本",
                     "  添加参考 /path/to/video.mp4",
                     "  添加素材 /path/to/material.mp4",
                     "  添加参考文件夹 /path/to/folder",
@@ -1488,18 +1477,12 @@ class VideoScriptGUI:
                 self.output_dir_var.set(output_dir)
                 self.output_dir = output_dir
                 self.log_agent(f"已设置输出目录: {output_dir}")
-            elif name == "toggle_cleaning":
-                self.enable_cleaning_var.set(bool(value))
-                self.log_agent(f"文本清洗: {'开' if value else '关'}")
             elif name == "toggle_titles":
                 self.enable_titles_var.set(bool(value))
                 self.log_agent(f"生成标题: {'开' if value else '关'}")
             elif name == "toggle_save_transcript":
                 self.save_transcript_var.set(bool(value))
                 self.log_agent(f"保存原文: {'开' if value else '关'}")
-            elif name == "toggle_save_clean":
-                self.save_clean_var.set(bool(value))
-                self.log_agent(f"保存清洗文本: {'开' if value else '关'}")
             elif name == "add_path":
                 self.add_paths([value], target="reference")
             elif name == "add_reference_path":
@@ -1567,10 +1550,8 @@ class VideoScriptGUI:
             f"AI模型: {self.api_model_entry.get().strip() or config.DEFAULT_API_MODEL}",
             f"视觉模型: {self.vision_model or config.VISION_API_MODEL}",
             f"输出目录: {self.output_dir_var.get().strip() or self.output_dir}",
-            f"文本清洗: {'开' if self.enable_cleaning_var.get() else '关'}",
             f"生成标题: {'开' if self.enable_titles_var.get() else '关'}",
             f"保存原文: {'开' if self.save_transcript_var.get() else '关'}",
-            f"保存清洗文本: {'开' if self.save_clean_var.get() else '关'}",
             f"运行状态: {'运行中' if self.is_running else '空闲'}",
         ]
         self.log_agent("\n".join(status))
@@ -1610,14 +1591,10 @@ class VideoScriptGUI:
             self.requirements_text.insert(tk.END, last_task["requirements"])
         if last_task.get("model_size"):
             self.model_var.set(last_task["model_size"])
-        if "enable_cleaning" in last_task:
-            self.enable_cleaning_var.set(bool(last_task["enable_cleaning"]))
         if "enable_titles" in last_task:
             self.enable_titles_var.set(bool(last_task["enable_titles"]))
         if "save_transcript" in last_task:
             self.save_transcript_var.set(bool(last_task["save_transcript"]))
-        if "save_clean" in last_task:
-            self.save_clean_var.set(bool(last_task["save_clean"]))
         if last_task.get("output_dir"):
             self.output_dir_var.set(last_task["output_dir"])
             self.output_dir = last_task["output_dir"]
@@ -1735,10 +1712,8 @@ class VideoScriptGUI:
     def try_toggle_command(self, command):
         normalized = command.replace(" ", "").lower()
         toggles = [
-            ("清洗文本", self.save_clean_var, "保存清洗文本"),
             ("原文", self.save_transcript_var, "保存原文"),
             ("标题", self.enable_titles_var, "生成标题"),
-            ("清洗", self.enable_cleaning_var, "文本清洗"),
         ]
         for keyword, var, label in toggles:
             if keyword not in normalized:
@@ -1817,10 +1792,8 @@ class VideoScriptGUI:
             "whisper_model": self.model_var.get(),
             "ai_model": self.api_model_entry.get().strip(),
             "vision_model": self.vision_model,
-            "enable_cleaning": self.enable_cleaning_var.get(),
             "enable_titles": self.enable_titles_var.get(),
             "save_transcript": self.save_transcript_var.get(),
-            "save_clean": self.save_clean_var.get(),
         }
         threading.Thread(target=self.interpret_natural_language_worker, args=(command, state), daemon=True).start()
 
@@ -1840,10 +1813,8 @@ class VideoScriptGUI:
 - set_ai_model value:string
 - set_vision_model value:string
 - set_output_dir value:string
-- toggle_cleaning value:boolean
 - toggle_titles value:boolean
 - toggle_save_transcript value:boolean
-- toggle_save_clean value:boolean
 - add_path value:string 默认添加到参考视频列表，兼容旧命令
 - add_reference_path value:string
 - add_material_path value:string
@@ -2006,10 +1977,8 @@ class VideoScriptGUI:
             "product_name": self.product_entry.get().strip(),
             "selling_points": self.points_entry.get().strip(),
             "requirements": self.get_text(self.requirements_text),
-            "enable_cleaning": self.enable_cleaning_var.get(),
             "enable_titles": self.enable_titles_var.get(),
             "save_transcript": self.save_transcript_var.get(),
-            "save_clean": self.save_clean_var.get(),
         }
 
         app_memory.update_last_task(
@@ -2021,10 +1990,8 @@ class VideoScriptGUI:
                 "product_name": task["product_name"],
                 "selling_points": task["selling_points"],
                 "requirements": task["requirements"],
-                "enable_cleaning": task["enable_cleaning"],
                 "enable_titles": task["enable_titles"],
                 "save_transcript": task["save_transcript"],
-                "save_clean": task["save_clean"],
             }
         )
 
@@ -2067,17 +2034,8 @@ class VideoScriptGUI:
                         f.write(transcript_text)
                     self.log(f"原文已保存: {transcript_path}")
 
-                work_text = transcript_text
-                if task["enable_cleaning"]:
-                    work_text = TextCleaner().clean_text(transcript_text)
-                    if task["save_clean"]:
-                        clean_path = os.path.join(task["output_dir"], f"clean_text_{video_name}.txt")
-                        with open(clean_path, "w", encoding="utf-8") as f:
-                            f.write(work_text)
-                        self.log(f"清洗文本已保存: {clean_path}")
-
                 prompt = self.build_rewrite_prompt(
-                    work_text,
+                    transcript_text,
                     task["product_name"],
                     task["selling_points"],
                     task["requirements"],
@@ -2091,7 +2049,7 @@ class VideoScriptGUI:
                 self.log(f"改写文案已保存: {rewrite_path}")
 
                 if task["enable_titles"]:
-                    titles = TitleGenerator().generate_titles_from_transcript(work_text, count=5)
+                    titles = TitleGenerator().generate_titles_from_transcript(transcript_text, count=5)
                     title_text = "\n".join(titles)
                     self.append_text(self.title_output, f"\n===== {video_name} =====\n{title_text}\n")
                     titles_path = os.path.join(task["output_dir"], f"titles_{video_name}.txt")

@@ -29,7 +29,7 @@ export function AgentConsole({ onCommand, messages }) {
         <input
           value={command}
           onChange={(event) => setCommand(event.target.value)}
-          placeholder="状态 / 创建活动 / 生成分镜 / 生成配音"
+          placeholder="状态 / 文案改写 / 标题生成 / 生成分镜"
         />
         <button type="submit">执行</button>
       </form>

@@ -177,10 +177,8 @@ def test_generation_worker_uses_subprocess_transcription_path():
                 "product_name": "测试产品",
                 "selling_points": "稳定、好用",
                 "requirements": "口语化",
-                "enable_cleaning": False,
                 "enable_titles": True,
                 "save_transcript": True,
-                "save_clean": False,
             }
             with (
                 patch.object(app, "transcribe_video_with_subprocess", side_effect=fake_transcribe),

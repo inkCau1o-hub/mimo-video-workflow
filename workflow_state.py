@@ -78,6 +78,11 @@ class WorkflowState:
         return reference.source_text
 
     @property
+    def final_copy_text(self) -> str:
+        rewrite = _copywriting_rewrite_text(self.current_activity)
+        return rewrite or self.reference_text
+
+    @property
     def storyboard_analysis(self) -> Optional[StoryboardAnalysis]:
         return self.current_activity.storyboard_analysis or self.project.storyboard_analysis
 
@@ -182,6 +187,15 @@ class WorkflowState:
         self._touch_activity(activity)
         self._touch()
         return reference
+
+    def set_copywriting(self, key: str, payload: Mapping[str, Any]) -> WorkflowActivity:
+        activity = self.current_activity
+        activity.copywriting = dict(activity.copywriting or {})
+        activity.copywriting[str(key)] = dict(payload)
+        activity.status = _activity_status(activity)
+        self._touch_activity(activity)
+        self._touch()
+        return activity
 
     def analyze_storyboard(
         self,
@@ -470,6 +484,20 @@ class WorkflowState:
             raise ValueError("reference_text is required")
         if not reference.source_text.strip():
             raise ValueError("reference_text is required")
+        rewrite_text = _copywriting_rewrite_text(self.current_activity)
+        if rewrite_text:
+            metadata = dict(reference.metadata or {})
+            metadata["copywriting"] = dict(self.current_activity.copywriting or {})
+            return ReferenceCopy(
+                copy_id=reference.copy_id,
+                title="文案处理结果",
+                source_text=rewrite_text,
+                source_path=reference.source_path,
+                product_name=reference.product_name,
+                keywords=list(reference.keywords),
+                language=reference.language,
+                metadata=metadata,
+            )
         return reference
 
     def _require_storyboard_analysis(self) -> StoryboardAnalysis:
@@ -502,6 +530,7 @@ class WorkflowState:
             reference_videos=_as_list(reference.metadata.get("videos")) if reference else [],
             transcript=transcript,
             reference_copy=reference,
+            copywriting={},
             storyboard_analysis=self.project.storyboard_analysis,
             material_assets=list(self.project.material_assets or []),
             voiceover_segments=list(self.project.voiceover_segments or []),
@@ -645,6 +674,7 @@ def _activity_status(activity: Optional[WorkflowActivity] = None) -> Dict[str, s
     if activity is None:
         return {
             "transcript": "pending",
+            "copywriting": "pending",
             "storyboard": "pending",
             "materials": "pending",
             "voiceover": "pending",
@@ -657,11 +687,21 @@ def _activity_status(activity: Optional[WorkflowActivity] = None) -> Dict[str, s
         reference_text = str(activity.transcript.get("text") or "")
     return {
         "transcript": "ready" if reference_text.strip() else "pending",
+        "copywriting": "ready" if _copywriting_rewrite_text(activity) else "pending",
         "storyboard": "ready" if activity.storyboard_analysis and activity.storyboard_analysis.shots else "pending",
         "materials": "ready" if activity.material_assets else "pending",
         "voiceover": "ready" if activity.voiceover_segments else "pending",
         "assembly": "ready" if activity.assembly_plan else "pending",
     }
+
+
+def _copywriting_rewrite_text(activity: Optional[WorkflowActivity]) -> str:
+    if activity is None or not isinstance(activity.copywriting, Mapping):
+        return ""
+    rewrite = activity.copywriting.get("rewrite")
+    if isinstance(rewrite, Mapping):
+        return str(rewrite.get("text") or "").strip()
+    return ""
 
 
 __all__ = ["WorkflowState"]

@@ -3,6 +3,7 @@ import { useState } from "react";
 const pages = [
   ["profile", "项目资料"],
   ["reference", "参考转写"],
+  ["copywriting", "文案处理"],
   ["storyboard", "分镜分析"],
   ["materials", "素材库"],
   ["voiceover", "配音"],

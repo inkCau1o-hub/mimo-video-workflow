@@ -109,6 +109,7 @@ class ProjectStore:
             "product_name": project.product_profile.product_name,
             "product_profile_complete": _product_profile_complete(project.product_profile),
             "has_reference": bool(state.reference_text.strip()),
+            "has_copywriting": _has_copywriting(activity),
             "storyboard_shots": len(state.storyboard_analysis.shots) if state.storyboard_analysis else 0,
             "material_assets": len(state.material_assets),
             "voiceover_segments": len(state.voiceover_segments),
@@ -176,3 +177,11 @@ def _product_profile_complete(profile: ProductProfile) -> bool:
         profile.rewrite_requirements,
     )
     return all(str(item or "").strip() for item in required)
+
+
+def _has_copywriting(activity: Any) -> bool:
+    copywriting = getattr(activity, "copywriting", {})
+    if not isinstance(copywriting, dict):
+        return False
+    rewrite = copywriting.get("rewrite")
+    return isinstance(rewrite, dict) and bool(str(rewrite.get("text") or "").strip())

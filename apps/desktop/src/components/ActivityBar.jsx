@@ -2,6 +2,7 @@ import { useState } from "react";
 
 const steps = [
   ["transcript", "转写"],
+  ["copywriting", "文案"],
   ["storyboard", "分镜"],
   ["voiceover", "配音"],
   ["assembly", "合成"],

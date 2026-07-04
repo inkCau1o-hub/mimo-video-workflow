@@ -543,6 +543,13 @@ pre {
   gap: 10px;
 }
 
+.copywriting-actions {
+  display: grid;
+  grid-template-columns: minmax(120px, auto) minmax(160px, 1fr) minmax(120px, auto) minmax(120px, auto);
+  align-items: end;
+  gap: 10px;
+}
+
 .queue-header span {
   color: #69717d;
   font-size: 12px;
@@ -651,6 +658,37 @@ pre {
 .result-card span {
   color: #69717d;
   font-size: 13px;
+}
+
+.final-copy-card {
+  flex: 1;
+  min-height: 220px;
+  overflow: auto;
+  border: 1px solid #edf0f3;
+  border-radius: 8px;
+  background: #fbfbfc;
+  padding: 14px;
+  color: #323842;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.final-copy-card.ready {
+  background: #ffffff;
+  border-color: #d7dce2;
+}
+
+.title-list {
+  display: grid;
+  gap: 8px;
+}
+
+.title-row {
+  border: 1px solid #edf0f3;
+  border-radius: 8px;
+  background: #fbfbfc;
+  padding: 10px 12px;
+  color: #20242a;
 }
 
 .compact-list {

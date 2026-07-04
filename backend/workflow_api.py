@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 from urllib.parse import unquote, urlparse
@@ -187,6 +188,66 @@ class WorkflowBackend:
             "status": self.store.project_status(project_id),
         }
 
+    def rewrite_copy(self, project_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
+        def run(context: JobContext) -> Dict[str, Any]:
+            context.update(10, "rewriting copy")
+            state = self.store.get_state(project_id)
+            reference_text = _current_reference_text(state)
+            profile = state.project.product_profile
+            prompt = build_product_rewrite_prompt(
+                reference_text,
+                profile.to_dict(),
+                extra_requirements=str(payload.get("requirements") or ""),
+                max_chars=_optional_int(payload.get("max_chars")) or 300,
+            )
+            rewritten = AIRewriter().rewrite_with_prompt(prompt).strip()
+            activity = state.set_copywriting(
+                "rewrite",
+                {
+                    "text": rewritten,
+                    "source": "reference_transcript",
+                    "source_chars": len(reference_text),
+                    "product_profile": profile.to_dict(),
+                    "created_at": _now_iso(),
+                },
+            )
+            self.store.save_project(project_id)
+            return {
+                "copywriting": activity.copywriting,
+                "status": self.store.project_status(project_id),
+            }
+
+        return {"job": self.jobs.submit("copy.rewrite", project_id, run).to_dict()}
+
+    def generate_copy_titles(self, project_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
+        def run(context: JobContext) -> Dict[str, Any]:
+            context.update(10, "generating titles")
+            state = self.store.get_state(project_id)
+            source_text = _copywriting_rewrite_text(state) or _current_reference_text(state)
+            profile = state.project.product_profile
+            count = _optional_int(payload.get("count")) or 5
+            prompt = build_product_titles_prompt(source_text, profile.to_dict(), count=count)
+            raw = AIRewriter().rewrite_with_prompt(prompt).strip()
+            titles = _parse_generated_titles(raw)
+            activity = state.set_copywriting(
+                "titles",
+                {
+                    "items": titles,
+                    "raw_response": raw,
+                    "source": "rewritten_copy" if _copywriting_rewrite_text(state) else "reference_transcript",
+                    "source_chars": len(source_text),
+                    "product_profile": profile.to_dict(),
+                    "created_at": _now_iso(),
+                },
+            )
+            self.store.save_project(project_id)
+            return {
+                "copywriting": activity.copywriting,
+                "status": self.store.project_status(project_id),
+            }
+
+        return {"job": self.jobs.submit("copy.titles", project_id, run).to_dict()}
+
     def transcribe_reference(self, project_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
         videos = _as_list(payload.get("videos") or payload.get("video"))
         validation = self.validate_reference_videos(project_id, {"videos": videos})
@@ -350,7 +411,7 @@ class WorkflowBackend:
 
         if normalized in {"help", "帮助", "命令"}:
             return {
-                "summary": "可用命令: 创建项目 名称、删除项目、确认删除项目、创建活动 名称、切换活动 名称或ID、状态、当前活动、转写当前活动、生成分镜、生成配音、生成合成计划。",
+                "summary": "可用命令: 创建项目 名称、删除项目、确认删除项目、创建活动 名称、切换活动 名称或ID、状态、当前活动、转写当前活动、文案改写、标题生成、生成分镜、生成配音、生成合成计划。",
                 "requires_confirmation": False,
                 "actions": [],
             }
@@ -444,6 +505,24 @@ class WorkflowBackend:
                 "summary": f"已启动参考转写，共 {len(videos)} 个视频。",
                 "requires_confirmation": False,
                 "actions": [{"type": "transcribe_reference", "videos": videos}],
+                **result,
+            }
+
+        if normalized in {"文案改写", "改写文案", "生成文案"}:
+            result = self.rewrite_copy(project_id, {})
+            return {
+                "summary": "已启动文案改写。",
+                "requires_confirmation": False,
+                "actions": [{"type": "rewrite_copy"}],
+                **result,
+            }
+
+        if normalized in {"标题生成", "生成标题"}:
+            result = self.generate_copy_titles(project_id, {})
+            return {
+                "summary": "已启动标题生成。",
+                "requires_confirmation": False,
+                "actions": [{"type": "generate_copy_titles"}],
                 **result,
             }
 
@@ -565,6 +644,49 @@ def build_rewrite_prompt(
 请直接输出改写后的文案，不需要其他说明。"""
 
 
+def build_product_rewrite_prompt(
+    transcript_text: str,
+    product_profile: Mapping[str, Any],
+    extra_requirements: str = "",
+    max_chars: int = 300,
+) -> str:
+    requirements = str(product_profile.get("rewrite_requirements") or "").strip()
+    if extra_requirements.strip():
+        requirements = f"{requirements}\n{extra_requirements.strip()}".strip()
+    return f"""你是短视频电商文案改写助手。请根据产品资料，把参考转写改写成可直接用于短视频口播的成稿。
+
+产品资料:
+{_format_product_profile(product_profile)}
+
+改写要求:
+{requirements or "保留核心信息，口语化，适合短视频口播。"}
+
+参考转写:
+{transcript_text}
+
+输出要求:
+- 只输出改写后的口播文案，不要解释。
+- 控制在{max_chars}字以内。
+- 保留参考转写中的核心事实，但表达要更清楚、更像真实口播。
+- 不要使用产品资料中禁用或夸大的表达。"""
+
+
+def build_product_titles_prompt(copy_text: str, product_profile: Mapping[str, Any], count: int = 5) -> str:
+    return f"""你是短视频标题策划助手。请基于成稿文案和产品资料生成{count}个标题。
+
+产品资料:
+{_format_product_profile(product_profile)}
+
+成稿文案:
+{copy_text}
+
+输出要求:
+- 每行一个标题。
+- 每个标题尽量控制在20字以内。
+- 标题要体现核心卖点，适合短视频平台。
+- 不要解释，不要编号以外的额外说明。"""
+
+
 def _as_list(value: Any) -> List[str]:
     if value is None or value == "":
         return []
@@ -573,6 +695,61 @@ def _as_list(value: Any) -> List[str]:
     if isinstance(value, Iterable):
         return [str(item) for item in value if str(item)]
     return [str(value)]
+
+
+def _now_iso() -> str:
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def _current_reference_text(state: Any) -> str:
+    text = str(getattr(state, "reference_text", "") or "").strip()
+    if not text:
+        raise ValueError("当前活动还没有参考转写，请先完成参考转写。")
+    return text
+
+
+def _copywriting_rewrite_text(state: Any) -> str:
+    activity = getattr(state, "current_activity", None)
+    copywriting = getattr(activity, "copywriting", {}) if activity else {}
+    if not isinstance(copywriting, Mapping):
+        return ""
+    rewrite = copywriting.get("rewrite")
+    if isinstance(rewrite, Mapping):
+        return str(rewrite.get("text") or "").strip()
+    return ""
+
+
+def _format_product_profile(profile: Mapping[str, Any]) -> str:
+    labels = [
+        ("product_name", "产品名称"),
+        ("brand_name", "品牌/店铺"),
+        ("features", "产品特点"),
+        ("selling_points", "核心卖点"),
+        ("target_audience", "目标人群"),
+        ("scenarios", "使用场景"),
+        ("promotion", "价格/活动"),
+        ("rewrite_requirements", "转写/改写要求"),
+        ("tone", "文案风格"),
+        ("forbidden_claims", "禁用表达"),
+    ]
+    lines = []
+    for key, label in labels:
+        value = str(profile.get(key) or "").strip()
+        if value:
+            lines.append(f"- {label}: {value}")
+    return "\n".join(lines) if lines else "无"
+
+
+def _parse_generated_titles(raw: str) -> List[str]:
+    titles = []
+    for line in str(raw or "").splitlines():
+        text = line.strip()
+        text = text.lstrip("-•* \t")
+        text = text.lstrip("0123456789.、）) ")
+        text = text.strip("「」“”\"'")
+        if text:
+            titles.append(text)
+    return titles[:12]
 
 
 def _unique_items(items: Iterable[str]) -> List[str]:

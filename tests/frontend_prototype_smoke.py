@@ -22,6 +22,7 @@ REQUIRED_FILES = [
     "src/components/ProjectStatusPanel.jsx",
     "src/components/Sidebar.jsx",
     "src/components/TopBar.jsx",
+    "src/pages/CopywritingPage.jsx",
     "src/pages/ReferencePage.jsx",
     "src/pages/StoryboardPage.jsx",
     "src/pages/MaterialLibraryPage.jsx",
@@ -78,6 +79,7 @@ def test_app_contains_required_product_regions():
     app = (APP_DIR / "src" / "App.jsx").read_text(encoding="utf-8")
     for component in (
         "ReferencePage",
+        "CopywritingPage",
         "ProductProfilePage",
         "StoryboardPage",
         "MaterialLibraryPage",
@@ -101,8 +103,8 @@ def test_reference_page_contains_full_entry_controls():
         "Whisper模型",
         "开始转写",
         "停止任务",
-        "发送到分镜",
-        "下一步：生成分镜",
+        "发送到文案处理",
+        "下一步：文案处理",
         "已保存",
         "正在导入",
         "浏览器导入会先复制到当前项目",
@@ -115,6 +117,19 @@ def test_reference_page_contains_full_entry_controls():
     app = (APP_DIR / "src" / "App.jsx").read_text(encoding="utf-8")
     assert "uploadReferenceVideos" in app
     assert "/reference/upload-videos" in app
+
+
+def test_copywriting_page_has_rewrite_and_titles_without_cleaning():
+    copywriting_page = (APP_DIR / "src" / "pages" / "CopywritingPage.jsx").read_text(encoding="utf-8")
+    sidebar = (APP_DIR / "src" / "components" / "Sidebar.jsx").read_text(encoding="utf-8")
+    app = (APP_DIR / "src" / "App.jsx").read_text(encoding="utf-8")
+    for text in ("文案处理", "文案改写", "标题生成", "发送到分镜", "成稿与标题"):
+        assert text in copywriting_page, f"CopywritingPage missing text: {text}"
+    assert "文本" + "清洗" not in copywriting_page
+    assert "clean" not in copywriting_page.lower()
+    assert "文案处理" in sidebar
+    assert "/copy/rewrite" in app
+    assert "/copy/titles" in app
 
 
 def test_product_profile_creation_and_editing_surfaces_exist():
@@ -142,6 +157,7 @@ def main():
     test_relative_import_graph_resolves()
     test_app_contains_required_product_regions()
     test_reference_page_contains_full_entry_controls()
+    test_copywriting_page_has_rewrite_and_titles_without_cleaning()
     test_product_profile_creation_and_editing_surfaces_exist()
     print("frontend_prototype_smoke: ok")
 

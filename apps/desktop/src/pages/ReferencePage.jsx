@@ -44,7 +44,7 @@ export function ReferencePage({
   project,
   validation,
   onCancelJob,
-  onGoStoryboard,
+  onGoCopywriting,
   onValidateReferenceVideos,
   onSetReferenceVideos,
   onTranscribeReference,
@@ -143,7 +143,7 @@ export function ReferencePage({
   };
 
   const sendToStoryboard = () => {
-    onGoStoryboard?.();
+    onGoCopywriting?.();
   };
 
   const canTranscribe = Boolean(project && videoQueue.length > 0);
@@ -167,10 +167,10 @@ export function ReferencePage({
           <p>{profile.rewrite_requirements || "新建项目或项目资料页填写转写/改写要求后，后续 AI 处理会读取这里。"}</p>
         </div>
         <div className="next-step">
-          <strong>下一步：生成分镜</strong>
-          <span>{savedText ? "转写结果已保存到当前活动，可以进入分镜分析。" : "先导入视频并完成转写。"}</span>
-          <button type="button" onClick={onGoStoryboard} disabled={!savedText}>
-            去分镜
+          <strong>下一步：文案处理</strong>
+          <span>{savedText ? "转写结果已保存到当前活动，可以进入文案改写和标题生成。" : "先导入视频并完成转写。"}</span>
+          <button type="button" onClick={onGoCopywriting} disabled={!savedText}>
+            去处理
           </button>
         </div>
 
@@ -324,7 +324,7 @@ export function ReferencePage({
         </div>
         <div className="action-row">
           <button type="button" className="primary" onClick={sendToStoryboard} disabled={!project || !savedText.trim()}>
-            发送到分镜
+            发送到文案处理
           </button>
           <button type="button" onClick={() => navigator.clipboard?.writeText(savedText)} disabled={!savedText}>
             复制转写文案

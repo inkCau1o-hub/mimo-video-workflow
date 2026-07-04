@@ -113,6 +113,10 @@ class WorkflowRequestHandler(BaseHTTPRequestHandler):
                 return HTTPStatus.OK, self.backend.set_reference_videos(project_id, payload)
             if method == "POST" and subpath == ["reference", "text"]:
                 return HTTPStatus.OK, self.backend.set_reference_text(project_id, payload)
+            if method == "POST" and subpath == ["copy", "rewrite"]:
+                return HTTPStatus.ACCEPTED, self.backend.rewrite_copy(project_id, payload)
+            if method == "POST" and subpath == ["copy", "titles"]:
+                return HTTPStatus.ACCEPTED, self.backend.generate_copy_titles(project_id, payload)
             if method == "POST" and subpath == ["storyboard", "analyze"]:
                 return HTTPStatus.ACCEPTED, self.backend.analyze_storyboard(project_id, payload)
             if method == "POST" and subpath == ["materials", "tag"]:

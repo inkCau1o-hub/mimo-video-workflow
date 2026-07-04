@@ -18,8 +18,9 @@ from production_schema import AssemblyItem, AssemblyPlan
 
 class FakeStoryboardAnalyzer:
     def analyze(self, reference, target_duration_seconds=None, shot_count=None, model=None):
+        assert reference.source_text
         return {
-            "summary": "测试分镜摘要",
+            "summary": f"测试分镜摘要: {reference.source_text[:12]}",
             "target_duration_seconds": target_duration_seconds or 6,
             "model": model or "fake-model",
             "shots": [
@@ -97,6 +98,9 @@ class FakeAssemblyRenderer:
 
 class FakeAIRewriter:
     def rewrite_with_prompt(self, prompt):
+        if "标题" in prompt and "每行一个标题" in prompt:
+            assert "旧流程改写结果" in prompt
+            return "杜亚智能窗帘真香\n全屋智能窗帘攻略"
         assert "后端转写文本" in prompt
         return "这是后端服务化旧流程改写结果"
 
@@ -390,6 +394,30 @@ def test_backend_http_workflow_chain():
             status, payload = request_json(
                 base_url,
                 "POST",
+                f"/projects/{project_id}/copy/rewrite",
+                {"max_chars": 180},
+            )
+            assert status == 202, payload
+            rewrite_job = assert_succeeded_job(base_url, payload)
+            assert rewrite_job["result"]["status"]["has_copywriting"] is True
+            rewrite_text = rewrite_job["result"]["copywriting"]["rewrite"]["text"]
+            assert "旧流程改写结果" in rewrite_text
+            assert rewrite_job["result"]["copywriting"]["rewrite"]["product_profile"]["product_name"] == "杜亚梦幻帘"
+
+            status, payload = request_json(
+                base_url,
+                "POST",
+                f"/projects/{project_id}/copy/titles",
+                {"count": 2},
+            )
+            assert status == 202, payload
+            titles_job = assert_succeeded_job(base_url, payload)
+            titles = titles_job["result"]["copywriting"]["titles"]["items"]
+            assert titles == ["杜亚智能窗帘真香", "全屋智能窗帘攻略"]
+
+            status, payload = request_json(
+                base_url,
+                "POST",
                 f"/projects/{project_id}/activities",
                 {"name": "第二条活动"},
             )
@@ -429,6 +457,7 @@ def test_backend_http_workflow_chain():
             assert status == 202, payload
             storyboard_job = assert_succeeded_job(base_url, payload)
             assert storyboard_job["result"]["status"]["storyboard_shots"] == 1
+            assert "这是后端服务化" in storyboard_job["result"]["storyboard_analysis"]["summary"]
 
             status, payload = request_json(
                 base_url,
