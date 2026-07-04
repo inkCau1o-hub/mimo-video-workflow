@@ -455,6 +455,17 @@ pre {
   background: #f1f5fb;
 }
 
+.drop-zone.uploading {
+  border-color: #b8c2d0;
+  background: #f4f7fb;
+}
+
+.upload-hint {
+  margin: -4px 0 8px;
+  color: #516071;
+  font-size: 12px;
+}
+
 .queue-panel,
 .source-preview,
 .pipeline-grid,

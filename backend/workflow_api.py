@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import uuid
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 from urllib.parse import unquote, urlparse
@@ -122,6 +123,51 @@ class WorkflowBackend:
             "ok": bool(checked) and all(item["exists"] for item in checked),
             "videos": checked,
             "missing": [item for item in checked if not item["exists"]],
+        }
+
+    def upload_reference_videos(self, project_id: str, files: Iterable[Mapping[str, Any]]) -> Dict[str, Any]:
+        state = self.store.get_state(project_id)
+        upload_dir = state.project_dir / "media" / "reference"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+
+        uploaded = []
+        for file_info in files:
+            original_filename = str(file_info.get("filename") or "").strip()
+            filename = _safe_upload_filename(original_filename)
+            if not _is_likely_video_path(filename):
+                raise ValueError(f"不支持的视频文件类型: {original_filename or filename}")
+            content = file_info.get("content") or b""
+            if not isinstance(content, (bytes, bytearray)) or not content:
+                raise ValueError(f"上传文件为空: {original_filename or filename}")
+
+            target = _unique_upload_path(upload_dir / filename)
+            target.write_bytes(bytes(content))
+            uploaded.append(
+                {
+                    "original_filename": original_filename or filename,
+                    "file_path": str(target.resolve()),
+                    "size_bytes": target.stat().st_size,
+                }
+            )
+
+        if not uploaded:
+            raise ValueError("没有收到可导入的视频文件")
+
+        existing = list(state.current_activity.reference_videos)
+        next_videos = _unique_items([*existing, *[item["file_path"] for item in uploaded]])
+        validation = self.validate_reference_videos(project_id, {"videos": next_videos})
+        normalized_videos = [
+            item["resolved_path"] if item.get("exists") else item["input_path"]
+            for item in validation["videos"]
+        ]
+        activity = state.set_reference_videos(normalized_videos)
+        self.store.save_project(project_id)
+        return {
+            "uploaded_videos": uploaded,
+            "activity": activity.to_dict(),
+            "status": self.store.project_status(project_id),
+            "project": state.to_dict(),
+            "validation": validation,
         }
 
     def set_reference_text(self, project_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
@@ -522,6 +568,18 @@ def _as_list(value: Any) -> List[str]:
     return [str(value)]
 
 
+def _unique_items(items: Iterable[str]) -> List[str]:
+    result: List[str] = []
+    seen = set()
+    for item in items:
+        text = str(item or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        result.append(text)
+    return result
+
+
 def _path_from_reference(value: Any) -> str:
     text = str(value or "").strip()
     if text.startswith("file://"):
@@ -575,6 +633,41 @@ def _resolve_video_path(value: Any, base_dirs: Iterable[Path | str]) -> Dict[str
         "exists": False,
         "reason": "文件不存在，请使用完整路径或重新选择文件",
     }
+
+
+def _is_likely_video_path(path: Any) -> bool:
+    return Path(str(path or "")).suffix.lower() in {
+        ".mp4",
+        ".mov",
+        ".m4v",
+        ".avi",
+        ".mkv",
+        ".webm",
+    }
+
+
+def _safe_upload_filename(value: Any) -> str:
+    raw = str(value or "").replace("\x00", "").replace("\\", "/")
+    name = raw.split("/")[-1].strip() or f"reference-video-{uuid.uuid4().hex[:8]}.mp4"
+    safe = "".join("_" if char in '<>:"|?*' or ord(char) < 32 else char for char in name)
+    safe = safe.strip(" .") or f"reference-video-{uuid.uuid4().hex[:8]}.mp4"
+    if len(safe) <= 180:
+        return safe
+    suffix = Path(safe).suffix
+    stem_limit = max(24, 180 - len(suffix))
+    return f"{Path(safe).stem[:stem_limit]}{suffix}"
+
+
+def _unique_upload_path(path: Path) -> Path:
+    if not path.exists():
+        return path
+    stem = path.stem or "reference-video"
+    suffix = path.suffix
+    for index in range(2, 1000):
+        candidate = path.with_name(f"{stem}_{index}{suffix}")
+        if not candidate.exists():
+            return candidate
+    return path.with_name(f"{stem}_{uuid.uuid4().hex[:8]}{suffix}")
 
 
 def _optional_float(value: Any) -> Optional[float]:

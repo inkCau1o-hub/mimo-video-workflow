@@ -132,6 +132,34 @@ def request_json(base_url, method, path, payload=None):
         return exc.code, json.loads(body) if body else {}
 
 
+def request_multipart(base_url, path, files):
+    boundary = "----mimo-smoke-boundary"
+    body = bytearray()
+    for field_name, filename, content, content_type in files:
+        body.extend(f"--{boundary}\r\n".encode("utf-8"))
+        body.extend(
+            (
+                f'Content-Disposition: form-data; name="{field_name}"; filename="{filename}"\r\n'
+                f"Content-Type: {content_type}\r\n\r\n"
+            ).encode("utf-8")
+        )
+        body.extend(content)
+        body.extend(b"\r\n")
+    body.extend(f"--{boundary}--\r\n".encode("utf-8"))
+    request = urllib.request.Request(
+        f"{base_url}{path}",
+        data=bytes(body),
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return response.status, json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8")
+        return exc.code, json.loads(raw) if raw else {}
+
+
 def request_with_origin(base_url, path, origin):
     request = urllib.request.Request(f"{base_url}{path}", headers={"Origin": origin}, method="GET")
     with urllib.request.urlopen(request, timeout=10) as response:
@@ -256,6 +284,21 @@ def test_backend_http_workflow_chain():
             assert payload["ok"] is False
             assert payload["videos"][0]["exists"] is True
             assert payload["videos"][1]["exists"] is False
+
+            status, payload = request_multipart(
+                base_url,
+                f"/projects/{project_id}/reference/upload-videos",
+                [("videos", "@杜亚官方旗舰店 这才是品质生活该装的窗帘！Real6Pro 720P.mp4", b"fake-video", "video/mp4")],
+            )
+            assert status == 200, payload
+            uploaded_path = Path(payload["uploaded_videos"][0]["file_path"])
+            assert uploaded_path.exists()
+            assert uploaded_path.suffix == ".mp4"
+            assert "杜亚官方旗舰店" in uploaded_path.name
+            assert uploaded_path.parent.name == "reference"
+            assert uploaded_path.parent.parent.name == "media"
+            assert payload["validation"]["ok"] is True
+            assert payload["activity"]["reference_videos"] == [str(uploaded_path)]
 
             status, payload = request_json(
                 base_url,

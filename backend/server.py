@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+from email.parser import BytesParser
+from email.policy import default as default_email_policy
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -61,7 +63,7 @@ class WorkflowRequestHandler(BaseHTTPRequestHandler):
     def dispatch(self, method: str) -> RouteResult:
         path = urlparse(self.path).path.strip("/")
         parts = [part for part in path.split("/") if part]
-        payload = self.read_json_body() if method in {"POST", "PATCH", "DELETE"} else {}
+        payload = self.read_request_body() if method in {"POST", "PATCH", "DELETE"} else {}
 
         if method == "GET" and parts == ["health"]:
             return HTTPStatus.OK, {"ok": True, "service": "mimo-workflow-backend"}
@@ -103,6 +105,8 @@ class WorkflowRequestHandler(BaseHTTPRequestHandler):
                 return HTTPStatus.OK, self.backend.select_activity(project_id, subpath[1])
             if method == "POST" and subpath == ["reference", "transcribe"]:
                 return HTTPStatus.ACCEPTED, self.backend.transcribe_reference(project_id, payload)
+            if method == "POST" and subpath == ["reference", "upload-videos"]:
+                return HTTPStatus.OK, self.backend.upload_reference_videos(project_id, payload.get("files") or [])
             if method == "POST" and subpath == ["reference", "validate-videos"]:
                 return HTTPStatus.OK, self.backend.validate_reference_videos(project_id, payload)
             if method == "POST" and subpath == ["reference", "videos"]:
@@ -122,6 +126,12 @@ class WorkflowRequestHandler(BaseHTTPRequestHandler):
 
         raise KeyError(f"route not found: {method} /{path}")
 
+    def read_request_body(self) -> Dict[str, Any]:
+        content_type = self.headers.get("Content-Type", "")
+        if content_type.lower().startswith("multipart/form-data"):
+            return self.read_multipart_body(content_type)
+        return self.read_json_body()
+
     def read_json_body(self) -> Dict[str, Any]:
         content_length = int(self.headers.get("Content-Length") or 0)
         if content_length <= 0:
@@ -133,6 +143,37 @@ class WorkflowRequestHandler(BaseHTTPRequestHandler):
         if not isinstance(data, dict):
             raise ValueError("JSON body must be an object")
         return data
+
+    def read_multipart_body(self, content_type: str) -> Dict[str, Any]:
+        content_length = int(self.headers.get("Content-Length") or 0)
+        if content_length <= 0:
+            return {"files": []}
+
+        raw = self.rfile.read(content_length)
+        message = BytesParser(policy=default_email_policy).parsebytes(
+            f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode("utf-8") + raw
+        )
+        files = []
+        fields: Dict[str, Any] = {}
+        for part in message.iter_parts():
+            if part.get_content_disposition() != "form-data":
+                continue
+            name = part.get_param("name", header="content-disposition") or ""
+            filename = part.get_filename()
+            content = part.get_payload(decode=True) or b""
+            if filename:
+                files.append(
+                    {
+                        "field": name,
+                        "filename": filename,
+                        "content_type": part.get_content_type(),
+                        "content": content,
+                    }
+                )
+            elif name:
+                fields[name] = content.decode(part.get_content_charset() or "utf-8", errors="replace")
+        fields["files"] = files
+        return fields
 
     def _write_headers(self, content_length: Optional[int] = None) -> None:
         origin = self.headers.get("Origin", "")

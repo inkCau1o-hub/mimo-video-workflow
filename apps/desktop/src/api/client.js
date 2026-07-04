@@ -21,6 +21,18 @@ export class ApiClient {
     return this.request("DELETE", path, payload);
   }
 
+  async upload(path, formData) {
+    const response = await fetch(`${this.baseUrl}${path}`, {
+      method: "POST",
+      body: formData,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || `POST ${path} failed: ${response.status}`);
+    }
+    return data;
+  }
+
   async request(method, path, payload) {
     const options = { method, headers: {} };
     if (payload !== undefined && method !== "GET") {

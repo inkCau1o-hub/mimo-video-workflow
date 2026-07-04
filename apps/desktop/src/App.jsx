@@ -280,6 +280,32 @@ export default function App() {
     }
   }, [api, addMessage, projectId]);
 
+  const uploadReferenceVideos = useCallback(async (files) => {
+    if (!projectId) {
+      addMessage("system", "请先创建项目。");
+      return null;
+    }
+    const selectedFiles = Array.from(files || []);
+    if (!selectedFiles.length) return null;
+    try {
+      const formData = new FormData();
+      for (const file of selectedFiles) {
+        formData.append("videos", file, file.webkitRelativePath || file.name);
+      }
+      const payload = await api.upload(`/projects/${projectId}/reference/upload-videos`, formData);
+      setStatus(payload.status);
+      setProject(payload.project);
+      setReferenceValidation(payload.validation || null);
+      addMessage("system", `已导入参考视频 ${payload.uploaded_videos?.length || selectedFiles.length} 个。`);
+      setError("");
+      return payload;
+    } catch (err) {
+      setError(err.message);
+      addMessage("system", `导入参考视频失败: ${err.message}`);
+      return null;
+    }
+  }, [api, addMessage, projectId]);
+
   const validateReferenceVideos = useCallback(async (videos) => {
     if (!projectId || !videos?.length) {
       setReferenceValidation(null);
@@ -337,6 +363,7 @@ export default function App() {
         onValidateReferenceVideos={validateReferenceVideos}
         onSetReferenceVideos={setReferenceVideos}
         onSetReferenceText={setReferenceText}
+        onUploadReferenceVideos={uploadReferenceVideos}
         onTranscribeReference={(payload) => {
           const videos = Array.isArray(payload?.videos) ? payload.videos : splitLines(payload);
           return validateReferenceVideos(videos).then((validation) => {

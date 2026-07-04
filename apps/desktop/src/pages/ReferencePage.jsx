@@ -15,13 +15,17 @@ function fileName(path) {
   return String(path || "").split(/[\\/]/).filter(Boolean).pop() || path;
 }
 
-function filePath(file) {
-  return file?.path || file?.webkitRelativePath || file?.name || "";
+function nativeFilePath(file) {
+  return file?.path || "";
 }
 
 function isLikelyVideoPath(path) {
   const text = String(path || "").toLowerCase();
   return videoExtensions.some((extension) => text.endsWith(extension));
+}
+
+function isLikelyVideoFile(file) {
+  return isLikelyVideoPath(file?.path || file?.webkitRelativePath || file?.name || "");
 }
 
 function terminalJobStatus(status) {
@@ -45,12 +49,14 @@ export function ReferencePage({
   onSetReferenceText,
   onSetReferenceVideos,
   onTranscribeReference,
+  onUploadReferenceVideos,
 }) {
   const [referenceText, setReferenceText] = useState("");
   const [videoInput, setVideoInput] = useState("");
   const [videoQueue, setVideoQueue] = useState([]);
   const [modelSize, setModelSize] = useState("medium");
   const [isDragging, setIsDragging] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef(null);
   const folderInputRef = useRef(null);
   const savedText = selectReferenceText(activity, project);
@@ -93,11 +99,33 @@ export function ReferencePage({
     setVideoInput("");
   };
 
-  const addFiles = (files) => {
-    const paths = Array.from(files || [])
-      .map(filePath)
-      .filter((path) => path && isLikelyVideoPath(path));
-    addVideoPaths(paths);
+  const addFiles = async (files) => {
+    const selectedFiles = Array.from(files || []).filter(isLikelyVideoFile);
+    if (!selectedFiles.length) return;
+
+    const nativePaths = selectedFiles.map(nativeFilePath).filter((path) => path && isLikelyVideoPath(path));
+    if (nativePaths.length) {
+      addVideoPaths(nativePaths);
+    }
+
+    const filesNeedingUpload = selectedFiles.filter((file) => !nativeFilePath(file));
+    if (!filesNeedingUpload.length) return;
+
+    if (!onUploadReferenceVideos) {
+      addVideoPaths(filesNeedingUpload.map((file) => file.webkitRelativePath || file.name).filter(Boolean));
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const payload = await onUploadReferenceVideos(filesNeedingUpload);
+      const uploadedQueue = payload?.activity?.reference_videos || payload?.uploaded_videos?.map((item) => item.file_path) || [];
+      if (uploadedQueue.length) {
+        setVideoQueue(uploadedQueue);
+      }
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const removeVideo = (path) => {
@@ -115,8 +143,8 @@ export function ReferencePage({
     event.preventDefault();
     setIsDragging(false);
     const textPaths = splitLines(event.dataTransfer.getData("text/plain"));
-    const filePaths = Array.from(event.dataTransfer.files || []).map(filePath);
-    addVideoPaths([...filePaths, ...textPaths].filter((path) => !path || isLikelyVideoPath(path)));
+    addVideoPaths(textPaths.filter(isLikelyVideoPath));
+    void addFiles(event.dataTransfer.files);
   };
 
   const sendToStoryboard = async () => {
@@ -125,7 +153,7 @@ export function ReferencePage({
   };
 
   const canTranscribe = Boolean(project && videoQueue.length > 0);
-  const canStartTranscribe = canTranscribe && validation?.ok && validation?.videos?.length === videoQueue.length;
+  const canStartTranscribe = canTranscribe && validation?.ok && validation?.videos?.length === videoQueue.length && !isUploading;
 
   return (
     <div className="page-grid two-column">
@@ -153,10 +181,10 @@ export function ReferencePage({
             <p>拖拽视频、选择文件/文件夹，或输入绝对路径。</p>
           </div>
           <div className="button-group">
-            <button type="button" onClick={() => fileInputRef.current?.click()} disabled={!project}>
-              选择视频
+            <button type="button" onClick={() => fileInputRef.current?.click()} disabled={!project || isUploading}>
+              {isUploading ? "正在导入..." : "选择视频"}
             </button>
-            <button type="button" onClick={() => folderInputRef.current?.click()} disabled={!project}>
+            <button type="button" onClick={() => folderInputRef.current?.click()} disabled={!project || isUploading}>
               选择文件夹
             </button>
           </div>
@@ -168,7 +196,7 @@ export function ReferencePage({
           accept="video/*,.mp4,.mov,.m4v,.avi,.mkv,.webm"
           multiple
           onChange={(event) => {
-            addFiles(event.target.files);
+            void addFiles(event.target.files);
             event.target.value = "";
           }}
         />
@@ -179,12 +207,12 @@ export function ReferencePage({
           multiple
           webkitdirectory=""
           onChange={(event) => {
-            addFiles(event.target.files);
+            void addFiles(event.target.files);
             event.target.value = "";
           }}
         />
         <div
-          className={isDragging ? "drop-zone dragging" : "drop-zone"}
+          className={[isDragging ? "drop-zone dragging" : "drop-zone", isUploading ? "uploading" : ""].filter(Boolean).join(" ")}
           onDragEnter={(event) => {
             event.preventDefault();
             setIsDragging(true);
@@ -197,8 +225,9 @@ export function ReferencePage({
           onDrop={dropVideos}
         >
           <strong>拖拽视频文件到这里</strong>
-          <span>Finder 拖入、文件选择、或下方粘贴路径都可以加入当前活动。</span>
+          <span>浏览器导入会先复制到当前项目；也可以在下方粘贴绝对路径。</span>
         </div>
+        {isUploading ? <p className="upload-hint">正在保存视频到当前项目，请稍等...</p> : null}
         <textarea
           className="small-textarea"
           value={videoInput}
@@ -263,7 +292,7 @@ export function ReferencePage({
           <button type="button" onClick={() => onCancelJob?.(job?.job_id)} disabled={!isRunning || !job?.job_id}>
             停止任务
           </button>
-          <button type="button" onClick={clearVideos} disabled={!videoQueue.length || isRunning}>
+          <button type="button" onClick={clearVideos} disabled={!videoQueue.length || isRunning || isUploading}>
             清空队列
           </button>
         </div>
