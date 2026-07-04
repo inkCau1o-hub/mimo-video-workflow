@@ -48,12 +48,28 @@ function isTerminalJob(job) {
   return ["succeeded", "failed", "cancelled"].includes(job?.status);
 }
 
+const WORKFLOW_PAGE_KEYS = new Set([
+  "profile",
+  "reference",
+  "copywriting",
+  "storyboard",
+  "materials",
+  "voiceover",
+  "assembly",
+  "results",
+]);
+
 export default function App() {
   const [backendUrl] = useState(DEFAULT_BACKEND_URL);
-  const autoOpenLatest = useMemo(() => {
-    return new URLSearchParams(window.location.search).get("auto_open") === "latest";
+  const launchOptions = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    const startPage = params.get("start_page") || "reference";
+    return {
+      autoOpenLatest: params.get("auto_open") === "latest",
+      startPage: WORKFLOW_PAGE_KEYS.has(startPage) ? startPage : "reference",
+    };
   }, []);
-  const [activePage, setActivePage] = useState("reference");
+  const [activePage, setActivePage] = useState(launchOptions.startPage);
   const [connected, setConnected] = useState(false);
   const [status, setStatus] = useState(null);
   const [project, setProject] = useState(null);
@@ -97,18 +113,18 @@ export default function App() {
         const snapshot = await api.get(`/projects/${projectId}/snapshot`);
         setStatus(snapshot.status);
         setProject(snapshot.project);
-      } else if (autoOpenLatest && nextProjects.length) {
+      } else if (launchOptions.autoOpenLatest && nextProjects.length) {
         const snapshot = await api.get(`/projects/${nextProjects[0].project_id}/snapshot`);
         setStatus(snapshot.status);
         setProject(snapshot.project);
-        setActivePage("reference");
+        setActivePage(launchOptions.startPage);
       }
       setError("");
     } catch (err) {
       setConnected(false);
       setError(err.message);
     }
-  }, [api, autoOpenLatest, projectId]);
+  }, [api, launchOptions, projectId]);
 
   const createProject = useCallback(async (input = {}) => {
     try {

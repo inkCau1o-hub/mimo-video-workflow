@@ -93,6 +93,8 @@ def test_app_contains_required_product_regions():
     ):
         assert component in app, f"App.jsx does not wire {component}"
     assert "auto_open" in app
+    assert "start_page" in app
+    assert "voiceover" in app
     assert "latest" in app
 
 

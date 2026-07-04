@@ -7,7 +7,7 @@ The app is intentionally a dev prototype:
 - It opens a native macOS window with `WKWebView`.
 - It starts the local Python backend on `127.0.0.1:8765` when needed.
 - It starts the Vite frontend on `127.0.0.1:5173` when needed.
-- It loads the existing desktop web UI, so projects, voiceover playback, and per-segment voiceover regeneration use the same tested workflow as the browser prototype.
+- It loads the existing desktop web UI with `auto_open=latest&start_page=voiceover`, so the latest project opens directly on the voiceover page for playback and per-segment regeneration checks.
 
 ## Build
 
