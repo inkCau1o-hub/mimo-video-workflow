@@ -117,6 +117,23 @@ def fake_transcribe_video(video_path, output_dir, model_size):
     }
 
 
+def sample_product_profile(**overrides):
+    profile = {
+        "product_name": "杜亚智能窗帘",
+        "brand_name": "杜亚官方旗舰店",
+        "features": "静音电机、智能控制、稳定耐用",
+        "selling_points": "安装方便、全屋智能联动、性价比高",
+        "target_audience": "装修用户、智能家居用户",
+        "scenarios": "卧室、客厅、全屋智能",
+        "promotion": "源头工厂活动",
+        "rewrite_requirements": "保留核心信息，适合短视频口播，控制在300字以内",
+        "tone": "口语化、可信赖",
+        "forbidden_claims": "不能夸大效果，不能虚假承诺",
+    }
+    profile.update(overrides)
+    return profile
+
+
 def request_json(base_url, method, path, payload=None):
     data = None
     headers = {}
@@ -237,11 +254,19 @@ def test_backend_http_workflow_chain():
             assert status == 200
             assert allow_origin == "http://127.0.0.1:5173"
 
-            status, project_payload = request_json(base_url, "POST", "/projects", {"name": "服务化测试"})
+            status, project_payload = request_json(
+                base_url,
+                "POST",
+                "/projects",
+                {"name": "服务化测试", "product_profile": sample_product_profile()},
+            )
             assert status == 201, project_payload
             project_id = project_payload["status"]["project_id"]
             first_activity_id = project_payload["status"]["current_activity_id"]
             assert project_payload["status"]["activity_count"] == 1
+            assert project_payload["status"]["product_name"] == "杜亚智能窗帘"
+            assert project_payload["status"]["product_profile_complete"] is True
+            assert project_payload["project"]["product_profile"]["selling_points"] == "安装方便、全屋智能联动、性价比高"
             assert project_payload["project"]["activities"][0]["activity_id"] == first_activity_id
 
             status, rename_payload = request_json(
@@ -252,6 +277,16 @@ def test_backend_http_workflow_chain():
             )
             assert status == 200, rename_payload
             assert rename_payload["status"]["name"] == "服务化测试重命名"
+
+            status, profile_payload = request_json(
+                base_url,
+                "PATCH",
+                f"/projects/{project_id}",
+                {"product_profile": sample_product_profile(product_name="杜亚梦幻帘")},
+            )
+            assert status == 200, profile_payload
+            assert profile_payload["status"]["product_name"] == "杜亚梦幻帘"
+            assert profile_payload["project"]["product_profile"]["product_name"] == "杜亚梦幻帘"
 
             status, delete_candidate = request_json(base_url, "POST", "/projects", {"name": "删除测试"})
             assert status == 201, delete_candidate
@@ -328,6 +363,12 @@ def test_backend_http_workflow_chain():
             assert status == 202, payload
             agent_transcribe_job = assert_succeeded_job(base_url, payload)
             assert "agent-reference.mp4" in agent_transcribe_job["result"]["reference_text"]
+            state_after_agent_transcribe = server.backend.store.get_state(project_id)
+            assert state_after_agent_transcribe.current_activity.reference_copy.product_name == "杜亚梦幻帘"
+            assert (
+                state_after_agent_transcribe.current_activity.reference_copy.metadata["product_profile"]["rewrite_requirements"]
+                == "保留核心信息，适合短视频口播，控制在300字以内"
+            )
 
             status, payload = request_json(
                 base_url,
@@ -430,7 +471,6 @@ def test_backend_http_workflow_chain():
                     "product_name": "测试产品",
                     "selling_points": "稳定、好用",
                     "requirements": "口语化",
-                    "enable_cleaning": False,
                     "enable_titles": True,
                 },
             )

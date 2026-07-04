@@ -79,6 +79,10 @@ textarea.small-textarea {
   min-height: 112px;
 }
 
+textarea.mini-textarea {
+  min-height: 74px;
+}
+
 pre {
   margin: 0;
   white-space: pre-wrap;
@@ -385,12 +389,67 @@ pre {
 }
 
 .field-row label,
-.full-label {
+.full-label,
+.profile-field {
   display: grid;
   gap: 6px;
   color: #69717d;
   font-size: 12px;
   font-weight: 700;
+}
+
+.profile-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.profile-field span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.profile-field em {
+  border: 1px solid #d9e5f8;
+  border-radius: 999px;
+  color: #2458a6;
+  background: #f5f9ff;
+  padding: 2px 7px;
+  font-size: 11px;
+  font-style: normal;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: rgba(22, 25, 30, 0.36);
+  padding: 24px;
+}
+
+.modal-panel {
+  width: min(920px, 100%);
+  max-height: min(820px, calc(100vh - 48px));
+  overflow: auto;
+  border: 1px solid #dfe3e8;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 20px 60px rgba(18, 24, 32, 0.2);
+  padding: 16px;
+}
+
+.modal-panel form {
+  display: grid;
+  gap: 14px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .readout {
@@ -575,6 +634,25 @@ pre {
   line-height: 1.55;
 }
 
+.result-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #edf0f3;
+  border-radius: 8px;
+  background: #fbfbfc;
+  padding: 16px;
+}
+
+.result-card.ready {
+  border-color: #bfe7cc;
+  background: #f4fbf6;
+}
+
+.result-card span {
+  color: #69717d;
+  font-size: 13px;
+}
+
 .compact-list {
   max-height: 260px;
 }
@@ -585,7 +663,8 @@ pre {
   gap: 8px;
 }
 
-.pipeline-grid div {
+.pipeline-grid div,
+.pipeline-grid article {
   display: grid;
   gap: 5px;
   padding: 10px;

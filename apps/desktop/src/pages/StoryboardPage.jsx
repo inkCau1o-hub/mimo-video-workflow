@@ -1,16 +1,11 @@
 import { useState } from "react";
-import { pickStoryboardAnalysis, referenceText as selectReferenceText } from "../workflowData";
-
-function textPreview(value, maxLength = 360) {
-  const text = String(value || "").trim();
-  if (!text) return "";
-  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
-}
+import { pickStoryboardAnalysis, productProfile, referenceText as selectReferenceText } from "../workflowData";
 
 export function StoryboardPage({ activity, project, onAnalyzeStoryboard }) {
   const [duration, setDuration] = useState("30");
   const [shotCount, setShotCount] = useState("5");
   const referenceText = selectReferenceText(activity, project);
+  const profile = productProfile(project);
   const analysis = pickStoryboardAnalysis(activity, project);
   const canAnalyze = Boolean(project && referenceText.trim());
 
@@ -33,10 +28,10 @@ export function StoryboardPage({ activity, project, onAnalyzeStoryboard }) {
         </div>
         <div className="source-preview">
           <div className="queue-header">
-            <strong>来自参考转写</strong>
+            <strong>输入状态</strong>
             <span>{referenceText ? `${referenceText.length} 字` : "未就绪"}</span>
           </div>
-          <p>{textPreview(referenceText) || "请先在参考转写页生成或保存文案。"}</p>
+          <p>{referenceText ? `将使用当前活动已保存的转写结果，并结合 ${profile.product_name || "项目产品"} 的产品资料生成分镜。` : "请先在参考转写页生成文案。"}</p>
         </div>
         <div className="field-row">
           <label>

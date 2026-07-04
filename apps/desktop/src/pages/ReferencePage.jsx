@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { pickList, referenceText as selectReferenceText } from "../workflowData";
+import { pickList, productProfile, referenceText as selectReferenceText } from "../workflowData";
 
 const whisperModels = ["tiny", "base", "small", "medium", "large-v3"];
 const videoExtensions = [".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"];
@@ -46,12 +46,10 @@ export function ReferencePage({
   onCancelJob,
   onGoStoryboard,
   onValidateReferenceVideos,
-  onSetReferenceText,
   onSetReferenceVideos,
   onTranscribeReference,
   onUploadReferenceVideos,
 }) {
-  const [referenceText, setReferenceText] = useState("");
   const [videoInput, setVideoInput] = useState("");
   const [videoQueue, setVideoQueue] = useState([]);
   const [modelSize, setModelSize] = useState("medium");
@@ -60,6 +58,7 @@ export function ReferencePage({
   const fileInputRef = useRef(null);
   const folderInputRef = useRef(null);
   const savedText = selectReferenceText(activity, project);
+  const profile = productProfile(project);
   const savedVideos = useMemo(() => pickList(activity, project, "reference_videos"), [activity, project]);
   const isRunning = Boolean(job && !terminalJobStatus(job.status));
   const validationByInput = useMemo(() => {
@@ -71,10 +70,6 @@ export function ReferencePage({
     return result;
   }, [validation]);
   const hasMissingPaths = Boolean(videoQueue.length && validation && !validation.ok);
-
-  useEffect(() => {
-    setReferenceText(savedText);
-  }, [savedText]);
 
   useEffect(() => {
     setVideoQueue(savedVideos);
@@ -147,8 +142,7 @@ export function ReferencePage({
     void addFiles(event.dataTransfer.files);
   };
 
-  const sendToStoryboard = async () => {
-    await onSetReferenceText(referenceText);
+  const sendToStoryboard = () => {
     onGoStoryboard?.();
   };
 
@@ -163,13 +157,18 @@ export function ReferencePage({
             <h2>参考转写</h2>
             <p>{activity ? `当前活动：${activity.name}` : "请先创建或打开项目。"}</p>
           </div>
-          <button type="button" className="primary" onClick={() => onSetReferenceText(referenceText)} disabled={!project}>
-            保存文案
-          </button>
+          <span className={savedText ? "status-pill ok" : "status-pill"}>{savedText ? "已转写" : "未转写"}</span>
+        </div>
+        <div className="source-preview">
+          <div className="queue-header">
+            <strong>产品资料</strong>
+            <span>{profile.product_name || "未填写"}</span>
+          </div>
+          <p>{profile.rewrite_requirements || "新建项目或项目资料页填写转写/改写要求后，后续 AI 处理会读取这里。"}</p>
         </div>
         <div className="next-step">
           <strong>下一步：生成分镜</strong>
-          <span>{savedText ? "文案已就绪，可以进入分镜分析。" : "先导入视频并完成转写，或直接粘贴参考文案。"}</span>
+          <span>{savedText ? "转写结果已保存到当前活动，可以进入分镜分析。" : "先导入视频并完成转写。"}</span>
           <button type="button" onClick={onGoStoryboard} disabled={!savedText}>
             去分镜
           </button>
@@ -315,27 +314,36 @@ export function ReferencePage({
       <section className="workspace-section">
         <div className="section-header">
           <div>
-            <h2>转写文案</h2>
-            <p>{savedText ? `${savedText.length} 字` : "尚未写入项目"}</p>
+            <h2>转写结果</h2>
+            <p>{savedText ? `已保存 ${savedText.length} 字，正文不在此页展开。` : "尚未生成转写结果"}</p>
           </div>
         </div>
-        <textarea
-          value={referenceText}
-          onChange={(event) => setReferenceText(event.target.value)}
-          placeholder="转写完成后会显示在这里，也可以直接粘贴文案。"
-        />
+        <div className={savedText ? "result-card ready" : "result-card"}>
+          <strong>{savedText ? "转写已完成" : "等待转写"}</strong>
+          <span>{savedText ? "原始文案已写入当前活动，并会作为分镜分析的输入。" : "导入参考视频后点击开始转写。"}</span>
+        </div>
         <div className="action-row">
-          <button type="button" className="primary" onClick={() => onSetReferenceText(referenceText)} disabled={!project}>
-            保存到当前活动
-          </button>
-          <button type="button" onClick={sendToStoryboard} disabled={!project || !referenceText.trim()}>
+          <button type="button" className="primary" onClick={sendToStoryboard} disabled={!project || !savedText.trim()}>
             发送到分镜
           </button>
-          <button type="button" onClick={() => navigator.clipboard?.writeText(referenceText)} disabled={!referenceText}>
-            复制文案
+          <button type="button" onClick={() => navigator.clipboard?.writeText(savedText)} disabled={!savedText}>
+            复制转写文案
           </button>
         </div>
-        <pre className="readout compact-readout">{savedText || "等待参考文案..."}</pre>
+        <div className="pipeline-grid">
+          <article>
+            <strong>当前活动</strong>
+            <span>{activity?.name || "未选择"}</span>
+          </article>
+          <article>
+            <strong>参考视频</strong>
+            <span>{videoQueue.length} 个</span>
+          </article>
+          <article>
+            <strong>转写字数</strong>
+            <span>{savedText ? `${savedText.length} 字` : "未生成"}</span>
+          </article>
+        </div>
       </section>
     </div>
   );

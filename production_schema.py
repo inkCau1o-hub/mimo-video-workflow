@@ -153,6 +153,20 @@ class ReferenceCopy(JsonDataclassMixin):
 
 
 @dataclass
+class ProductProfile(JsonDataclassMixin):
+    product_name: str = ""
+    brand_name: str = ""
+    features: str = ""
+    selling_points: str = ""
+    target_audience: str = ""
+    scenarios: str = ""
+    promotion: str = ""
+    rewrite_requirements: str = ""
+    tone: str = ""
+    forbidden_claims: str = ""
+
+
+@dataclass
 class StoryboardShot(JsonDataclassMixin):
     shot_id: str = ""
     title: str = ""
@@ -251,6 +265,7 @@ class ProductionProject(JsonDataclassMixin):
     project_id: str = ""
     name: str = ""
     project_dir: str = ""
+    product_profile: ProductProfile = field(default_factory=ProductProfile)
     reference_copy: Optional[ReferenceCopy] = None
     storyboard_analysis: Optional[StoryboardAnalysis] = None
     material_assets: List[MaterialAsset] = field(default_factory=list)

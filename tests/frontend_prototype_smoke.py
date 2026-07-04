@@ -16,7 +16,9 @@ REQUIRED_FILES = [
     "src/api/client.js",
     "src/workflowData.js",
     "src/components/AgentConsole.jsx",
+    "src/components/CreateProjectModal.jsx",
     "src/components/JobLogPanel.jsx",
+    "src/components/ProductProfileForm.jsx",
     "src/components/ProjectStatusPanel.jsx",
     "src/components/Sidebar.jsx",
     "src/components/TopBar.jsx",
@@ -25,6 +27,7 @@ REQUIRED_FILES = [
     "src/pages/MaterialLibraryPage.jsx",
     "src/pages/VoiceoverPage.jsx",
     "src/pages/AssemblyPage.jsx",
+    "src/pages/ProductProfilePage.jsx",
     "src/pages/ResultsPage.jsx",
     "src/styles.css",
 ]
@@ -75,12 +78,14 @@ def test_app_contains_required_product_regions():
     app = (APP_DIR / "src" / "App.jsx").read_text(encoding="utf-8")
     for component in (
         "ReferencePage",
+        "ProductProfilePage",
         "StoryboardPage",
         "MaterialLibraryPage",
         "VoiceoverPage",
         "AssemblyPage",
         "ResultsPage",
         "AgentConsole",
+        "CreateProjectModal",
         "ProjectStatusPanel",
         "JobLogPanel",
     ):
@@ -98,16 +103,37 @@ def test_reference_page_contains_full_entry_controls():
         "停止任务",
         "发送到分镜",
         "下一步：生成分镜",
+        "已保存",
         "正在导入",
         "浏览器导入会先复制到当前项目",
         "路径有效",
         "路径缺失",
     ):
         assert text in reference_page, f"ReferencePage missing control text: {text}"
+    assert "转写完成后会显示在这里" not in reference_page
 
     app = (APP_DIR / "src" / "App.jsx").read_text(encoding="utf-8")
     assert "uploadReferenceVideos" in app
     assert "/reference/upload-videos" in app
+
+
+def test_product_profile_creation_and_editing_surfaces_exist():
+    modal = (APP_DIR / "src" / "components" / "CreateProjectModal.jsx").read_text(encoding="utf-8")
+    profile_form = (APP_DIR / "src" / "components" / "ProductProfileForm.jsx").read_text(encoding="utf-8")
+    profile_page = (APP_DIR / "src" / "pages" / "ProductProfilePage.jsx").read_text(encoding="utf-8")
+    sidebar = (APP_DIR / "src" / "components" / "Sidebar.jsx").read_text(encoding="utf-8")
+    for text in (
+        "产品名称",
+        "产品特点",
+        "核心卖点",
+        "转写/改写要求",
+        "必填",
+    ):
+        assert text in profile_form, f"ProductProfileForm missing field text: {text}"
+    assert "创建项目" in modal
+    assert "missingRequiredProfileFields" in modal
+    assert "保存资料" in profile_page
+    assert "项目资料" in sidebar
 
 
 def main():
@@ -116,6 +142,7 @@ def main():
     test_relative_import_graph_resolves()
     test_app_contains_required_product_regions()
     test_reference_page_contains_full_entry_controls()
+    test_product_profile_creation_and_editing_surfaces_exist()
     print("frontend_prototype_smoke: ok")
 
 

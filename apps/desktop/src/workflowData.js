@@ -21,3 +21,14 @@ export function pickList(activity, project, key) {
 export function referenceText(activity, project) {
   return pickReferenceCopy(activity, project)?.source_text || "";
 }
+
+export function productProfile(project) {
+  return project?.product_profile || {};
+}
+
+export function productProfileComplete(project) {
+  const profile = productProfile(project);
+  return ["product_name", "features", "selling_points", "rewrite_requirements"].every((key) =>
+    String(profile[key] || "").trim()
+  );
+}

@@ -2,12 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiClient, DEFAULT_BACKEND_URL } from "./api/client";
 import { AgentConsole } from "./components/AgentConsole";
 import { ActivityBar } from "./components/ActivityBar";
+import { CreateProjectModal } from "./components/CreateProjectModal";
 import { JobLogPanel } from "./components/JobLogPanel";
 import { ProjectStatusPanel } from "./components/ProjectStatusPanel";
 import { Sidebar } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
 import { AssemblyPage } from "./pages/AssemblyPage";
 import { MaterialLibraryPage } from "./pages/MaterialLibraryPage";
+import { ProductProfilePage } from "./pages/ProductProfilePage";
 import { ReferencePage } from "./pages/ReferencePage";
 import { ResultsPage } from "./pages/ResultsPage";
 import { StoryboardPage } from "./pages/StoryboardPage";
@@ -55,6 +57,7 @@ export default function App() {
   const [messages, setMessages] = useState([]);
   const [error, setError] = useState("");
   const [referenceValidation, setReferenceValidation] = useState(null);
+  const [createProjectOpen, setCreateProjectOpen] = useState(false);
 
   const api = useMemo(() => new ApiClient(backendUrl), [backendUrl]);
   const projectId = status?.project_id;
@@ -91,11 +94,13 @@ export default function App() {
     }
   }, [api, projectId]);
 
-  const createProject = useCallback(async () => {
+  const createProject = useCallback(async (input = {}) => {
     try {
-      const payload = await api.post("/projects", { name: "MiMo Prototype Project" });
+      const payload = await api.post("/projects", input);
       setStatus(payload.status);
       setProject(payload.project);
+      setActivePage("reference");
+      setCreateProjectOpen(false);
       const projectList = await api.get("/projects");
       setProjects(projectList.projects || []);
       addMessage("system", `已创建项目 ${payload.status.project_id}`);
@@ -106,6 +111,25 @@ export default function App() {
       addMessage("system", `创建项目失败: ${err.message}`);
     }
   }, [api, addMessage]);
+
+  const saveProductProfile = useCallback(async (productProfile) => {
+    if (!projectId) {
+      addMessage("system", "请先创建项目。");
+      return;
+    }
+    try {
+      const payload = await api.patch(`/projects/${projectId}`, { product_profile: productProfile });
+      setStatus(payload.status);
+      setProject(payload.project);
+      const projectList = await api.get("/projects");
+      setProjects(projectList.projects || []);
+      addMessage("system", "项目资料已保存。");
+      setError("");
+    } catch (err) {
+      setError(err.message);
+      addMessage("system", `保存项目资料失败: ${err.message}`);
+    }
+  }, [api, addMessage, projectId]);
 
   const openProject = useCallback(async (nextProjectId) => {
     try {
@@ -246,23 +270,6 @@ export default function App() {
     }
   }, [api, addMessage, pollJob, projectId]);
 
-  const setReferenceText = useCallback(async (text) => {
-    if (!projectId) {
-      addMessage("system", "请先创建项目。");
-      return;
-    }
-    try {
-      const payload = await api.post(`/projects/${projectId}/reference/text`, { text });
-      setStatus(payload.status);
-      const snapshot = await api.get(`/projects/${projectId}/snapshot`);
-      setProject(snapshot.project);
-      addMessage("system", "参考文案已写入项目。");
-    } catch (err) {
-      setError(err.message);
-      addMessage("system", `写入参考失败: ${err.message}`);
-    }
-  }, [api, addMessage, projectId]);
-
   const setReferenceVideos = useCallback(async (videos) => {
     if (!projectId) {
       addMessage("system", "请先创建项目。");
@@ -352,6 +359,12 @@ export default function App() {
   }, [api, addMessage, pollJob, projectId]);
 
   const page = {
+    profile: (
+      <ProductProfilePage
+        project={project}
+        onSaveProductProfile={saveProductProfile}
+      />
+    ),
     reference: (
       <ReferencePage
         activity={currentActivity}
@@ -362,7 +375,6 @@ export default function App() {
         onGoStoryboard={() => setActivePage("storyboard")}
         onValidateReferenceVideos={validateReferenceVideos}
         onSetReferenceVideos={setReferenceVideos}
-        onSetReferenceText={setReferenceText}
         onUploadReferenceVideos={uploadReferenceVideos}
         onTranscribeReference={(payload) => {
           const videos = Array.isArray(payload?.videos) ? payload.videos : splitLines(payload);
@@ -418,8 +430,13 @@ export default function App() {
         backendUrl={backendUrl}
         status={status}
         connected={connected}
-        onCreateProject={createProject}
+        onCreateProject={() => setCreateProjectOpen(true)}
         onRefresh={refreshProject}
+      />
+      <CreateProjectModal
+        open={createProjectOpen}
+        onClose={() => setCreateProjectOpen(false)}
+        onCreate={createProject}
       />
       {error ? <div className="error-banner">{error}</div> : null}
       <ActivityBar

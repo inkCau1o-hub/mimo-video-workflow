@@ -12,7 +12,6 @@ from urllib.parse import unquote, urlparse
 
 import config
 from ai_rewriter import AIRewriter
-from text_cleaner import TextCleaner
 from title_generator import TitleGenerator
 
 from .jobs import JobContext, JobManager
@@ -41,6 +40,7 @@ class WorkflowBackend:
             name=str(payload.get("name") or "project"),
             output_dir=payload.get("output_dir"),
             project_id=payload.get("project_id"),
+            product_profile=payload.get("product_profile") or {},
         )
         return self.store.to_payload(state.project.project_id)
 
@@ -172,13 +172,14 @@ class WorkflowBackend:
 
     def set_reference_text(self, project_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
         state = self.store.get_state(project_id)
+        profile = state.project.product_profile
         state.set_reference_text(
             payload.get("text", ""),
             title=payload.get("title", ""),
-            product_name=payload.get("product_name", ""),
-            keywords=payload.get("keywords") or [],
+            product_name=payload.get("product_name") or profile.product_name,
+            keywords=payload.get("keywords") or _profile_keywords(profile),
             source_path=payload.get("source_path", ""),
-            metadata=payload.get("metadata") or {},
+            metadata={**(payload.get("metadata") or {}), "product_profile": profile.to_dict()},
         )
         self.store.save_project(project_id)
         return {
@@ -195,8 +196,9 @@ class WorkflowBackend:
         videos = [item["resolved_path"] for item in validation["videos"]]
         model_size = str(payload.get("model_size") or "medium")
         output_dir = str(payload.get("output_dir") or self.store.get_state(project_id).project_dir)
-        product_name = str(payload.get("product_name") or "")
-        keywords = payload.get("keywords") or []
+        profile = self.store.get_state(project_id).project.product_profile
+        product_name = str(payload.get("product_name") or profile.product_name)
+        keywords = payload.get("keywords") or _profile_keywords(profile)
 
         def run(context: JobContext) -> Dict[str, Any]:
             transcripts = []
@@ -215,7 +217,11 @@ class WorkflowBackend:
                 title=product_name or "参考文案",
                 product_name=product_name,
                 keywords=keywords,
-                metadata={"videos": videos, "model_size": model_size},
+                metadata={
+                    "videos": videos,
+                    "model_size": model_size,
+                    "product_profile": profile.to_dict(),
+                },
             )
             self.store.save_project(project_id)
             return {
@@ -303,12 +309,13 @@ class WorkflowBackend:
 
     def legacy_generate(self, project_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
         videos = _as_list(payload.get("videos") or payload.get("video"))
-        output_dir = str(payload.get("output_dir") or self.store.get_state(project_id).project_dir)
+        state = self.store.get_state(project_id)
+        profile = state.project.product_profile
+        output_dir = str(payload.get("output_dir") or state.project_dir)
         model_size = str(payload.get("model_size") or "medium")
-        product_name = str(payload.get("product_name") or "")
-        selling_points = str(payload.get("selling_points") or "")
-        requirements = str(payload.get("requirements") or "")
-        enable_cleaning = bool(payload.get("enable_cleaning", True))
+        product_name = str(payload.get("product_name") or profile.product_name)
+        selling_points = str(payload.get("selling_points") or profile.selling_points)
+        requirements = str(payload.get("requirements") or profile.rewrite_requirements)
         enable_titles = bool(payload.get("enable_titles", True))
 
         def run(context: JobContext) -> Dict[str, Any]:
@@ -319,7 +326,7 @@ class WorkflowBackend:
                 context.update(index / total * 80.0, f"processing {index}/{total}")
                 transcript = transcribe_video(video_path, output_dir, model_size)["transcript"]
                 context.raise_if_cancelled()
-                work_text = TextCleaner().clean_text(transcript) if enable_cleaning else transcript
+                work_text = transcript
                 prompt = build_rewrite_prompt(work_text, product_name, selling_points, requirements)
                 rewrite = AIRewriter().rewrite_with_prompt(prompt)
                 titles = TitleGenerator().generate_titles_from_transcript(work_text, count=5) if enable_titles else []
@@ -578,6 +585,25 @@ def _unique_items(items: Iterable[str]) -> List[str]:
         seen.add(text)
         result.append(text)
     return result
+
+
+def _profile_keywords(profile: Any) -> List[str]:
+    raw_items = [
+        getattr(profile, "features", ""),
+        getattr(profile, "selling_points", ""),
+        getattr(profile, "target_audience", ""),
+        getattr(profile, "scenarios", ""),
+        getattr(profile, "tone", ""),
+    ]
+    keywords: List[str] = []
+    seen = set()
+    for raw in raw_items:
+        for item in str(raw or "").replace("，", ",").replace("、", ",").split(","):
+            text = item.strip()
+            if text and text not in seen:
+                seen.add(text)
+                keywords.append(text)
+    return keywords[:12]
 
 
 def _path_from_reference(value: Any) -> str:

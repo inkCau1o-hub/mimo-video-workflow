@@ -1,4 +1,6 @@
 const statusItems = [
+  ["product_name", "产品", (value) => value || "未填写"],
+  ["product_profile_complete", "产品资料", (value) => (value ? "已完善" : "待补全")],
   ["current_activity_name", "当前活动", (value) => value || "未选择"],
   ["activity_count", "活动数", (value) => `${value || 0}`],
   ["has_reference", "参考文案", (value) => (value ? "已就绪" : "未设置")],

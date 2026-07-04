@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import config
-from production_schema import ProductionProject, load_json, save_json
+from production_schema import ProductProfile, ProductionProject, load_json, save_json
 from workflow_state import WorkflowState
 
 
@@ -31,6 +31,7 @@ class ProjectStore:
         name: str = "project",
         output_dir: Optional[str | Path] = None,
         project_id: Optional[str] = None,
+        product_profile: Optional[Dict[str, Any]] = None,
     ) -> WorkflowState:
         project_id = project_id or f"project_{uuid.uuid4().hex[:8]}"
         base_dir = Path(output_dir).expanduser() if output_dir else self.root_dir
@@ -39,6 +40,7 @@ class ProjectStore:
             project_id=project_id,
             name=name or "project",
             project_dir=str(project_dir),
+            product_profile=_coerce_product_profile(product_profile),
         )
         state = WorkflowState(project=project, output_dir=str(base_dir))
         self._states[project_id] = state
@@ -71,6 +73,8 @@ class ProjectStore:
         name = str(payload.get("name") or "").strip()
         if name:
             state.project.name = name
+        if "product_profile" in payload:
+            state.project.product_profile = _coerce_product_profile(payload.get("product_profile"))
         state._touch()
         self.save_project(project_id)
         return self.to_payload(project_id)
@@ -102,6 +106,8 @@ class ProjectStore:
             "project_id": project.project_id,
             "name": project.name,
             "project_dir": project.project_dir,
+            "product_name": project.product_profile.product_name,
+            "product_profile_complete": _product_profile_complete(project.product_profile),
             "has_reference": bool(state.reference_text.strip()),
             "storyboard_shots": len(state.storyboard_analysis.shots) if state.storyboard_analysis else 0,
             "material_assets": len(state.material_assets),
@@ -152,3 +158,21 @@ class ProjectStore:
                 reverse=True,
             )
         )
+
+
+def _coerce_product_profile(value: Optional[Dict[str, Any]]) -> ProductProfile:
+    if isinstance(value, ProductProfile):
+        return value
+    if isinstance(value, dict):
+        return ProductProfile.from_dict(value)
+    return ProductProfile()
+
+
+def _product_profile_complete(profile: ProductProfile) -> bool:
+    required = (
+        profile.product_name,
+        profile.features,
+        profile.selling_points,
+        profile.rewrite_requirements,
+    )
+    return all(str(item or "").strip() for item in required)
