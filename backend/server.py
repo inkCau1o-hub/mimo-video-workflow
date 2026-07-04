@@ -2,19 +2,29 @@ from __future__ import annotations
 
 import argparse
 import json
+import mimetypes
 from email.parser import BytesParser
 from email.policy import default as default_email_policy
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from socketserver import TCPServer
 from typing import Any, Dict, Optional, Tuple
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from .project_store import ProjectStore
 from .workflow_api import WorkflowBackend
 
 
 RouteResult = Tuple[int, Dict[str, Any]]
+
+
+class LocalThreadingHTTPServer(ThreadingHTTPServer):
+    def server_bind(self) -> None:
+        TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = str(host)
+        self.server_port = int(port)
 
 
 class WorkflowRequestHandler(BaseHTTPRequestHandler):
@@ -46,6 +56,8 @@ class WorkflowRequestHandler(BaseHTTPRequestHandler):
 
     def _handle(self, method: str) -> None:
         try:
+            if self._serve_project_media(method):
+                return
             status, payload = self.dispatch(method)
         except KeyError as exc:
             status, payload = HTTPStatus.NOT_FOUND, {"error": str(exc)}
@@ -59,6 +71,28 @@ class WorkflowRequestHandler(BaseHTTPRequestHandler):
         self._write_headers(content_length=len(body))
         self.end_headers()
         self.wfile.write(body)
+
+    def _serve_project_media(self, method: str) -> bool:
+        parsed = urlparse(self.path)
+        path = parsed.path.strip("/")
+        parts = [part for part in path.split("/") if part]
+        if method != "GET" or len(parts) != 3 or parts[0] != "projects" or parts[2] != "media":
+            return False
+
+        media_path = (parse_qs(parsed.query).get("path") or [""])[0]
+        file_path = self.backend.resolve_project_media(parts[1], media_path)
+        content_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+        self.send_response(HTTPStatus.OK)
+        self._write_headers(content_length=file_path.stat().st_size, content_type=content_type)
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        with file_path.open("rb") as handle:
+            while True:
+                chunk = handle.read(1024 * 1024)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+        return True
 
     def dispatch(self, method: str) -> RouteResult:
         path = urlparse(self.path).path.strip("/")
@@ -179,13 +213,13 @@ class WorkflowRequestHandler(BaseHTTPRequestHandler):
         fields["files"] = files
         return fields
 
-    def _write_headers(self, content_length: Optional[int] = None) -> None:
+    def _write_headers(self, content_length: Optional[int] = None, content_type: str = "application/json; charset=utf-8") -> None:
         origin = self.headers.get("Origin", "")
         allowed_origins = {
             "http://127.0.0.1:5173",
             "http://localhost:5173",
         }
-        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Type", content_type)
         self.send_header(
             "Access-Control-Allow-Origin",
             origin if origin in allowed_origins else "http://127.0.0.1:5173",
@@ -212,7 +246,7 @@ def create_server(
         pass
 
     Handler.backend = backend
-    server = ThreadingHTTPServer((host, int(port)), Handler)
+    server = LocalThreadingHTTPServer((host, int(port)), Handler)
     server.quiet = quiet
     server.backend = backend
     return server

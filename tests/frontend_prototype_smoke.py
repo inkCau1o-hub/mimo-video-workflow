@@ -151,6 +151,16 @@ def test_product_profile_creation_and_editing_surfaces_exist():
     assert "项目资料" in sidebar
 
 
+def test_voiceover_audio_uses_backend_media_endpoint():
+    voiceover_page = (APP_DIR / "src" / "pages" / "VoiceoverPage.jsx").read_text(encoding="utf-8")
+    app = (APP_DIR / "src" / "App.jsx").read_text(encoding="utf-8")
+    assert "/projects/" in voiceover_page
+    assert "/media?path=" in voiceover_page
+    assert "encodeURIComponent" in voiceover_page
+    assert "file://" not in voiceover_page
+    assert "backendUrl={backendUrl}" in app
+
+
 def main():
     test_required_files_exist()
     test_package_scripts_and_dependencies()
@@ -159,6 +169,7 @@ def main():
     test_reference_page_contains_full_entry_controls()
     test_copywriting_page_has_rewrite_and_titles_without_cleaning()
     test_product_profile_creation_and_editing_surfaces_exist()
+    test_voiceover_audio_uses_backend_media_endpoint()
     print("frontend_prototype_smoke: ok")
 
 

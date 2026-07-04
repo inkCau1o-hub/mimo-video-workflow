@@ -4,6 +4,7 @@ import tempfile
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -185,6 +186,12 @@ def request_with_origin(base_url, path, origin):
     request = urllib.request.Request(f"{base_url}{path}", headers={"Origin": origin}, method="GET")
     with urllib.request.urlopen(request, timeout=10) as response:
         return response.status, response.headers.get("Access-Control-Allow-Origin")
+
+
+def request_raw(base_url, path):
+    request = urllib.request.Request(f"{base_url}{path}", method="GET")
+    with urllib.request.urlopen(request, timeout=10) as response:
+        return response.status, response.headers.get("Content-Type"), response.read()
 
 
 def assert_succeeded_job(base_url, job_payload):
@@ -473,11 +480,28 @@ def test_backend_http_workflow_chain():
                 base_url,
                 "POST",
                 f"/projects/{project_id}/voiceovers/generate",
-                {"output_dir": str(Path(tmpdir) / "voiceovers")},
+                {},
             )
             assert status == 202, payload
             voiceover_job = assert_succeeded_job(base_url, payload)
             assert voiceover_job["result"]["status"]["voiceover_segments"] == 1
+            audio_path = voiceover_job["result"]["voiceover_segments"][0]["audio_path"]
+
+            media_query = urllib.parse.quote(audio_path, safe="")
+            status, content_type, body = request_raw(base_url, f"/projects/{project_id}/media?path={media_query}")
+            assert status == 200
+            assert content_type.startswith("audio/mpeg"), content_type
+            assert body == b"fake-mp3"
+
+            outside_audio = Path(tmpdir) / "outside.mp3"
+            outside_audio.write_bytes(b"outside")
+            status, payload = request_json(
+                base_url,
+                "GET",
+                f"/projects/{project_id}/media?path={urllib.parse.quote(str(outside_audio), safe='')}",
+            )
+            assert status == 400, payload
+            assert "inside the project directory" in payload["error"]
 
             status, payload = request_json(
                 base_url,

@@ -427,6 +427,7 @@ export default function App() {
     voiceover: (
       <VoiceoverPage
         activity={currentActivity}
+        backendUrl={backendUrl}
         project={project}
         onGenerateVoiceovers={(payload) => submitProjectJob("/voiceovers/generate", payload, "生成配音")}
       />

@@ -54,6 +54,26 @@ class WorkflowBackend:
     def get_status(self, project_id: str) -> Dict[str, Any]:
         return self.store.project_status(project_id)
 
+    def resolve_project_media(self, project_id: str, media_path: str) -> Path:
+        state = self.store.get_state(project_id)
+        if not media_path:
+            raise ValueError("media path is required")
+
+        project_dir = state.project_dir.resolve()
+        candidate = Path(media_path).expanduser()
+        if not candidate.is_absolute():
+            candidate = project_dir / candidate
+        candidate = candidate.resolve()
+
+        try:
+            candidate.relative_to(project_dir)
+        except ValueError as exc:
+            raise ValueError("media path must be inside the project directory") from exc
+
+        if not candidate.is_file():
+            raise KeyError(f"media file not found: {media_path}")
+        return candidate
+
     def update_project(self, project_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
         return self.store.update_project(project_id, dict(payload))
 

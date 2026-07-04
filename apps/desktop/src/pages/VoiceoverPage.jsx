@@ -1,13 +1,15 @@
 import { useMemo, useState } from "react";
 import { pickList, pickStoryboardAnalysis } from "../workflowData";
 
-function toFileUrl(path) {
+function toProjectMediaUrl(backendUrl, projectId, path) {
   if (!path) return "";
-  if (/^https?:\/\//.test(path) || path.startsWith("file://")) return path;
-  return `file://${path}`;
+  if (/^https?:\/\//.test(path)) return path;
+  if (!backendUrl || !projectId) return "";
+  const baseUrl = backendUrl.replace(/\/$/, "");
+  return `${baseUrl}/projects/${encodeURIComponent(projectId)}/media?path=${encodeURIComponent(path)}`;
 }
 
-export function VoiceoverPage({ activity, project, onGenerateVoiceovers }) {
+export function VoiceoverPage({ activity, backendUrl, project, onGenerateVoiceovers }) {
   const [voice, setVoice] = useState("");
   const [audioFormat, setAudioFormat] = useState("mp3");
   const [stylePrompt, setStylePrompt] = useState("自然、清晰、适合短视频口播");
@@ -100,8 +102,8 @@ export function VoiceoverPage({ activity, project, onGenerateVoiceovers }) {
                 <strong>{segment.shot_id}{segment.segment_id ? ` · ${segment.segment_id}` : ""}</strong>
                 <span>{segment.audio_path}</span>
                 <p>{segment.text}</p>
-                {segment.audio_path ? (
-                  <audio controls src={toFileUrl(segment.audio_path)}>
+                {segment.audio_path && project?.project_id ? (
+                  <audio controls preload="metadata" src={toProjectMediaUrl(backendUrl, project.project_id, segment.audio_path)}>
                     <track kind="captions" />
                   </audio>
                 ) : null}
