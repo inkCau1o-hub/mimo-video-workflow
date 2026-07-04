@@ -50,6 +50,9 @@ function isTerminalJob(job) {
 
 export default function App() {
   const [backendUrl] = useState(DEFAULT_BACKEND_URL);
+  const autoOpenLatest = useMemo(() => {
+    return new URLSearchParams(window.location.search).get("auto_open") === "latest";
+  }, []);
   const [activePage, setActivePage] = useState("reference");
   const [connected, setConnected] = useState(false);
   const [status, setStatus] = useState(null);
@@ -88,18 +91,24 @@ export default function App() {
       await api.get("/health");
       setConnected(true);
       const projectList = await api.get("/projects");
-      setProjects(projectList.projects || []);
+      const nextProjects = projectList.projects || [];
+      setProjects(nextProjects);
       if (projectId) {
         const snapshot = await api.get(`/projects/${projectId}/snapshot`);
         setStatus(snapshot.status);
         setProject(snapshot.project);
+      } else if (autoOpenLatest && nextProjects.length) {
+        const snapshot = await api.get(`/projects/${nextProjects[0].project_id}/snapshot`);
+        setStatus(snapshot.status);
+        setProject(snapshot.project);
+        setActivePage("reference");
       }
       setError("");
     } catch (err) {
       setConnected(false);
       setError(err.message);
     }
-  }, [api, projectId]);
+  }, [api, autoOpenLatest, projectId]);
 
   const createProject = useCallback(async (input = {}) => {
     try {

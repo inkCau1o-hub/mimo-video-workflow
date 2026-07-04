@@ -92,6 +92,8 @@ def test_app_contains_required_product_regions():
         "JobLogPanel",
     ):
         assert component in app, f"App.jsx does not wire {component}"
+    assert "auto_open" in app
+    assert "latest" in app
 
 
 def test_reference_page_contains_full_entry_controls():
