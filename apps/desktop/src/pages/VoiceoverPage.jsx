@@ -1,18 +1,22 @@
 import { useMemo, useState } from "react";
 import { pickList, pickStoryboardAnalysis } from "../workflowData";
 
-function toProjectMediaUrl(backendUrl, projectId, path) {
+function toProjectMediaUrl(backendUrl, projectId, segment) {
+  const path = segment?.audio_path || "";
   if (!path) return "";
   if (/^https?:\/\//.test(path)) return path;
   if (!backendUrl || !projectId) return "";
   const baseUrl = backendUrl.replace(/\/$/, "");
-  return `${baseUrl}/projects/${encodeURIComponent(projectId)}/media?path=${encodeURIComponent(path)}`;
+  const version = segment?.metadata?.generated_at || "";
+  const versionQuery = version ? `&v=${encodeURIComponent(version)}` : "";
+  return `${baseUrl}/projects/${encodeURIComponent(projectId)}/media?path=${encodeURIComponent(path)}${versionQuery}`;
 }
 
-export function VoiceoverPage({ activity, backendUrl, project, onGenerateVoiceovers }) {
+export function VoiceoverPage({ activity, backendUrl, project, onGenerateVoiceovers, onRegenerateVoiceover }) {
   const [voice, setVoice] = useState("");
   const [audioFormat, setAudioFormat] = useState("mp3");
   const [stylePrompt, setStylePrompt] = useState("自然、清晰、适合短视频口播");
+  const [regeneratingShotId, setRegeneratingShotId] = useState("");
   const analysis = pickStoryboardAnalysis(activity, project);
   const shots = analysis?.shots || [];
   const segments = pickList(activity, project, "voiceover_segments");
@@ -31,6 +35,21 @@ export function VoiceoverPage({ activity, backendUrl, project, onGenerateVoiceov
       audio_format: audioFormat,
       style_prompt: stylePrompt.trim(),
     });
+  };
+
+  const regenerateSegment = async (segment) => {
+    if (!segment?.shot_id || !onRegenerateVoiceover) return;
+    setRegeneratingShotId(segment.shot_id);
+    try {
+      await onRegenerateVoiceover({
+        shot_id: segment.shot_id,
+        voice: voice.trim(),
+        audio_format: audioFormat,
+        style_prompt: stylePrompt.trim(),
+      });
+    } finally {
+      setRegeneratingShotId("");
+    }
   };
 
   return (
@@ -99,11 +118,20 @@ export function VoiceoverPage({ activity, backendUrl, project, onGenerateVoiceov
           ) : (
             segments.map((segment) => (
               <article className="asset-row" key={segment.segment_id}>
-                <strong>{segment.shot_id}{segment.segment_id ? ` · ${segment.segment_id}` : ""}</strong>
+                <div className="asset-row-toolbar">
+                  <strong>{segment.shot_id}{segment.segment_id ? ` · ${segment.segment_id}` : ""}</strong>
+                  <button
+                    type="button"
+                    onClick={() => regenerateSegment(segment)}
+                    disabled={!project?.project_id || regeneratingShotId === segment.shot_id}
+                  >
+                    {regeneratingShotId === segment.shot_id ? "生成中..." : "重新生成"}
+                  </button>
+                </div>
                 <span>{segment.audio_path}</span>
                 <p>{segment.text}</p>
                 {segment.audio_path && project?.project_id ? (
-                  <audio controls preload="metadata" src={toProjectMediaUrl(backendUrl, project.project_id, segment.audio_path)}>
+                  <audio controls preload="metadata" src={toProjectMediaUrl(backendUrl, project.project_id, segment)}>
                     <track kind="captions" />
                   </audio>
                 ) : null}

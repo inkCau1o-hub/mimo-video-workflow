@@ -430,6 +430,7 @@ export default function App() {
         backendUrl={backendUrl}
         project={project}
         onGenerateVoiceovers={(payload) => submitProjectJob("/voiceovers/generate", payload, "生成配音")}
+        onRegenerateVoiceover={(payload) => submitProjectJob("/voiceovers/regenerate", payload, `重新生成配音 ${payload.shot_id}`)}
       />
     ),
     assembly: (

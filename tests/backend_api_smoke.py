@@ -506,6 +506,24 @@ def test_backend_http_workflow_chain():
             status, payload = request_json(
                 base_url,
                 "POST",
+                f"/projects/{project_id}/voiceovers/regenerate",
+                {"shot_id": "S01", "style_prompt": "重新用更自然的语气朗读。"},
+            )
+            assert status == 202, payload
+            regenerate_job = assert_succeeded_job(base_url, payload)
+            regenerated = regenerate_job["result"]["voiceover_segment"]
+            assert regenerated["shot_id"] == "S01"
+            assert regenerated["metadata"]["regenerated"] is True
+            assert regenerate_job["result"]["status"]["voiceover_segments"] == 1
+            media_query = urllib.parse.quote(regenerated["audio_path"], safe="")
+            status, content_type, body = request_raw(base_url, f"/projects/{project_id}/media?path={media_query}")
+            assert status == 200
+            assert content_type.startswith("audio/mpeg"), content_type
+            assert body == b"fake-mp3"
+
+            status, payload = request_json(
+                base_url,
+                "POST",
                 f"/projects/{project_id}/assembly/plan",
                 {"output_path": str(Path(tmpdir) / "final.mp4")},
             )

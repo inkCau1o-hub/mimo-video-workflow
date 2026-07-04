@@ -371,6 +371,29 @@ class WorkflowBackend:
 
         return {"job": self.jobs.submit("voiceovers.generate", project_id, run).to_dict()}
 
+    def regenerate_voiceover(self, project_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
+        shot_id = str(payload.get("shot_id") or payload.get("segment_id") or "").strip()
+
+        def run(context: JobContext) -> Dict[str, Any]:
+            context.update(10, f"regenerating voiceover {shot_id}")
+            state = self.store.get_state(project_id)
+            segment = state.generate_voiceover_segment(
+                shot_id=shot_id,
+                output_dir=payload.get("output_dir"),
+                style_prompt=payload.get("style_prompt")
+                or "Read naturally and clearly for short video narration.",
+                voice=payload.get("voice"),
+                audio_format=payload.get("audio_format", "mp3"),
+            )
+            self.store.save_project(project_id)
+            return {
+                "voiceover_segment": segment.to_dict(),
+                "voiceover_segments": [item.to_dict() for item in state.voiceover_segments],
+                "status": self.store.project_status(project_id),
+            }
+
+        return {"job": self.jobs.submit("voiceovers.regenerate", project_id, run).to_dict()}
+
     def build_assembly_plan(self, project_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
         def run(context: JobContext) -> Dict[str, Any]:
             context.update(10, "building assembly plan")

@@ -157,6 +157,9 @@ def test_voiceover_audio_uses_backend_media_endpoint():
     assert "/projects/" in voiceover_page
     assert "/media?path=" in voiceover_page
     assert "encodeURIComponent" in voiceover_page
+    assert "重新生成" in voiceover_page
+    assert "onRegenerateVoiceover" in voiceover_page
+    assert "/voiceovers/regenerate" in app
     assert "file://" not in voiceover_page
     assert "backendUrl={backendUrl}" in app
 

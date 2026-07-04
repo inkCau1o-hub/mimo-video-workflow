@@ -157,6 +157,8 @@ class WorkflowRequestHandler(BaseHTTPRequestHandler):
                 return HTTPStatus.ACCEPTED, self.backend.tag_materials(project_id, payload)
             if method == "POST" and subpath == ["voiceovers", "generate"]:
                 return HTTPStatus.ACCEPTED, self.backend.generate_voiceovers(project_id, payload)
+            if method == "POST" and subpath == ["voiceovers", "regenerate"]:
+                return HTTPStatus.ACCEPTED, self.backend.regenerate_voiceover(project_id, payload)
             if method == "POST" and subpath == ["assembly", "plan"]:
                 return HTTPStatus.ACCEPTED, self.backend.build_assembly_plan(project_id, payload)
             if method == "POST" and subpath == ["legacy", "generate"]:

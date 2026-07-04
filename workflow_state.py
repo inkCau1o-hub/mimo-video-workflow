@@ -346,12 +346,15 @@ class WorkflowState:
 
         cursor = 0.0
         voiceovers: List[VoiceoverSegment] = []
+        generated_at = datetime.utcnow().isoformat(timespec="seconds") + "Z"
         for index, shot in enumerate(analysis.shots, start=1):
             shot_id = shot.shot_id or f"S{index:02d}"
             segment_id = f"voiceover_{shot_id}"
             item = by_segment_id.get(segment_id) or by_shot_id.get(shot_id) or {}
             duration = _to_float(item.get("duration_seconds") or item.get("duration"), shot.duration_seconds or 0.0)
             audio_path = str(item.get("audio_path") or item.get("path") or "")
+            metadata = {key: value for key, value in dict(item).items() if key not in {"segment_id", "shot_id"}}
+            metadata["generated_at"] = generated_at
             voiceovers.append(
                 VoiceoverSegment(
                     segment_id=segment_id,
@@ -361,7 +364,7 @@ class WorkflowState:
                     start_seconds=round(cursor, 3),
                     duration_seconds=round(duration, 3),
                     voice=voice or getattr(worker, "voice", "") or "",
-                    metadata={key: value for key, value in dict(item).items() if key not in {"segment_id", "shot_id"}},
+                    metadata=metadata,
                 )
             )
             cursor += max(duration, 0.0)
@@ -382,6 +385,112 @@ class WorkflowState:
         self._touch_activity(activity)
         self._touch()
         return voiceovers
+
+    def generate_voiceover_segment(
+        self,
+        shot_id: str,
+        tts_client: Optional[Any] = None,
+        output_dir: Optional[PathLike] = None,
+        style_prompt: str = "Read naturally and clearly for short video narration.",
+        voice: Optional[str] = None,
+        audio_format: str = "mp3",
+        save: bool = True,
+        save_path: Optional[PathLike] = None,
+        **kwargs: Any,
+    ) -> VoiceoverSegment:
+        target_shot_id = str(shot_id or "").strip()
+        if not target_shot_id:
+            raise ValueError("shot_id is required")
+
+        analysis = self._require_storyboard_analysis()
+        indexed_shots = [
+            ((shot.shot_id or f"S{index:02d}"), shot)
+            for index, shot in enumerate(analysis.shots, start=1)
+        ]
+        shot = next((item for item_id, item in indexed_shots if item_id == target_shot_id), None)
+        if shot is None:
+            raise ValueError(f"shot not found: {target_shot_id}")
+
+        worker = tts_client or self.tts_client or MimoTTSClient()
+        voiceover_dir = Path(output_dir).expanduser() if output_dir else self.project_dir / "voiceovers"
+        segment_id = f"voiceover_{target_shot_id}"
+        request_segment = {
+            "segment_id": segment_id,
+            "shot_id": target_shot_id,
+            "text": shot.tts_text or shot.script_text,
+            "duration_seconds": shot.duration_seconds,
+        }
+        result = _call_method(
+            worker,
+            ("synthesize_segments",),
+            [request_segment],
+            str(voiceover_dir),
+            style_prompt=style_prompt,
+            voice=voice,
+            audio_format=audio_format,
+            **kwargs,
+        )
+        items = [item for item in result or [] if isinstance(item, Mapping)]
+        item = next((entry for entry in items if entry.get("segment_id") == segment_id), None) or (
+            next((entry for entry in items if entry.get("shot_id") == target_shot_id), None) if items else {}
+        )
+        audio_path = str((item or {}).get("audio_path") or (item or {}).get("path") or "")
+        if not audio_path:
+            raise ValueError(f"TTS did not return an audio path for {target_shot_id}")
+
+        duration = _to_float((item or {}).get("duration_seconds") or (item or {}).get("duration"), shot.duration_seconds or 0.0)
+        metadata = {
+            key: value
+            for key, value in dict(item or {}).items()
+            if key not in {"segment_id", "shot_id"}
+        }
+        metadata["generated_at"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+        metadata["regenerated"] = True
+        updated_segment = VoiceoverSegment(
+            segment_id=segment_id,
+            shot_id=target_shot_id,
+            text=shot.tts_text or shot.script_text,
+            audio_path=audio_path,
+            duration_seconds=round(duration, 3),
+            voice=voice or getattr(worker, "voice", "") or "",
+            metadata=metadata,
+        )
+
+        activity = self.current_activity
+        existing_by_shot = {
+            segment.shot_id: segment
+            for segment in (activity.voiceover_segments or self.project.voiceover_segments or [])
+            if segment.shot_id
+        }
+        existing_by_shot[target_shot_id] = updated_segment
+
+        cursor = 0.0
+        ordered_voiceovers: List[VoiceoverSegment] = []
+        for current_shot_id, current_shot in indexed_shots:
+            segment = existing_by_shot.get(current_shot_id)
+            if segment is None:
+                continue
+            segment.start_seconds = round(cursor, 3)
+            if not segment.duration_seconds:
+                segment.duration_seconds = round(_to_float(None, current_shot.duration_seconds or 0.0), 3)
+            cursor += max(segment.duration_seconds or 0.0, 0.0)
+            ordered_voiceovers.append(segment)
+
+        activity.voiceover_segments = ordered_voiceovers
+        activity.status = _activity_status(activity)
+        self.project.voiceover_segments = ordered_voiceovers
+
+        if save:
+            voiceover_dir.mkdir(parents=True, exist_ok=True)
+            path = Path(save_path).expanduser() if save_path else self.project_dir / "voiceover_segments.json"
+            save_json({"segments": [segment.to_dict() for segment in ordered_voiceovers]}, path)
+            self.project.metadata = dict(self.project.metadata)
+            self.project.metadata["voiceover_dir"] = str(voiceover_dir)
+            self.project.metadata["voiceover_segments_path"] = str(path)
+
+        self._touch_activity(activity)
+        self._touch()
+        return updated_segment
 
     def build_assembly_plan(
         self,
