@@ -54,6 +54,7 @@ export default function App() {
   const [jobs, setJobs] = useState([]);
   const [messages, setMessages] = useState([]);
   const [error, setError] = useState("");
+  const [referenceValidation, setReferenceValidation] = useState(null);
 
   const api = useMemo(() => new ApiClient(backendUrl), [backendUrl]);
   const projectId = status?.project_id;
@@ -271,10 +272,27 @@ export default function App() {
       const payload = await api.post(`/projects/${projectId}/reference/videos`, { videos });
       setStatus(payload.status);
       setProject(payload.project);
+      setReferenceValidation(payload.validation || null);
       addMessage("system", `参考视频队列已保存，共 ${videos.length} 个。`);
     } catch (err) {
       setError(err.message);
       addMessage("system", `保存参考视频失败: ${err.message}`);
+    }
+  }, [api, addMessage, projectId]);
+
+  const validateReferenceVideos = useCallback(async (videos) => {
+    if (!projectId || !videos?.length) {
+      setReferenceValidation(null);
+      return null;
+    }
+    try {
+      const payload = await api.post(`/projects/${projectId}/reference/validate-videos`, { videos });
+      setReferenceValidation(payload);
+      return payload;
+    } catch (err) {
+      setError(err.message);
+      addMessage("system", `校验视频路径失败: ${err.message}`);
+      return null;
     }
   }, [api, addMessage, projectId]);
 
@@ -313,17 +331,26 @@ export default function App() {
         activity={currentActivity}
         job={referenceJob}
         project={project}
+        validation={referenceValidation}
         onCancelJob={cancelJob}
         onGoStoryboard={() => setActivePage("storyboard")}
+        onValidateReferenceVideos={validateReferenceVideos}
         onSetReferenceVideos={setReferenceVideos}
         onSetReferenceText={setReferenceText}
         onTranscribeReference={(payload) => {
           const videos = Array.isArray(payload?.videos) ? payload.videos : splitLines(payload);
-          return submitProjectJob(
-            "/reference/transcribe",
-            { videos: splitLines(videos), model_size: payload?.model_size || "medium" },
-            "转写参考"
-          );
+          return validateReferenceVideos(videos).then((validation) => {
+            if (!validation?.ok) {
+              addMessage("system", "视频路径校验未通过，请先修正缺失路径。");
+              setError("视频路径校验未通过，请使用完整路径。");
+              return null;
+            }
+            return submitProjectJob(
+              "/reference/transcribe",
+              { videos: splitLines(videos), model_size: payload?.model_size || "medium" },
+              "转写参考"
+            );
+          });
         }}
       />
     ),

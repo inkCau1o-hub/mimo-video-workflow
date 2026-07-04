@@ -7,6 +7,7 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional
+from urllib.parse import unquote, urlparse
 
 import config
 from ai_rewriter import AIRewriter
@@ -98,12 +99,29 @@ class WorkflowBackend:
     def set_reference_videos(self, project_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
         state = self.store.get_state(project_id)
         videos = _as_list(payload.get("videos") or payload.get("video"))
-        activity = state.set_reference_videos(videos)
+        validation = self.validate_reference_videos(project_id, {"videos": videos})
+        normalized_videos = [
+            item["resolved_path"] if item.get("exists") else item["input_path"]
+            for item in validation["videos"]
+        ]
+        activity = state.set_reference_videos(normalized_videos)
         self.store.save_project(project_id)
         return {
             "activity": activity.to_dict(),
             "status": self.store.project_status(project_id),
             "project": state.to_dict(),
+            "validation": validation,
+        }
+
+    def validate_reference_videos(self, project_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
+        state = self.store.get_state(project_id)
+        videos = _as_list(payload.get("videos") or payload.get("video"))
+        base_dirs = [state.project_dir, Path.cwd()]
+        checked = [_resolve_video_path(path, base_dirs) for path in videos]
+        return {
+            "ok": bool(checked) and all(item["exists"] for item in checked),
+            "videos": checked,
+            "missing": [item for item in checked if not item["exists"]],
         }
 
     def set_reference_text(self, project_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
@@ -124,6 +142,11 @@ class WorkflowBackend:
 
     def transcribe_reference(self, project_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
         videos = _as_list(payload.get("videos") or payload.get("video"))
+        validation = self.validate_reference_videos(project_id, {"videos": videos})
+        if not validation["ok"]:
+            missing_names = ", ".join(item["input_path"] for item in validation["missing"]) or "空视频队列"
+            raise ValueError(f"视频文件不存在或路径不完整: {missing_names}")
+        videos = [item["resolved_path"] for item in validation["videos"]]
         model_size = str(payload.get("model_size") or "medium")
         output_dir = str(payload.get("output_dir") or self.store.get_state(project_id).project_dir)
         product_name = str(payload.get("product_name") or "")
@@ -497,6 +520,61 @@ def _as_list(value: Any) -> List[str]:
     if isinstance(value, Iterable):
         return [str(item) for item in value if str(item)]
     return [str(value)]
+
+
+def _path_from_reference(value: Any) -> str:
+    text = str(value or "").strip()
+    if text.startswith("file://"):
+        parsed = urlparse(text)
+        return unquote(parsed.path)
+    return text
+
+
+def _resolve_video_path(value: Any, base_dirs: Iterable[Path | str]) -> Dict[str, Any]:
+    input_path = str(value or "").strip()
+    normalized = _path_from_reference(input_path)
+    if not normalized:
+        return {
+            "input_path": input_path,
+            "resolved_path": "",
+            "exists": False,
+            "reason": "路径为空",
+        }
+
+    raw_path = Path(normalized).expanduser()
+    candidates: List[Path] = []
+    if raw_path.is_absolute():
+        candidates.append(raw_path)
+    else:
+        for base_dir in base_dirs:
+            if base_dir:
+                candidates.append(Path(base_dir).expanduser() / raw_path)
+
+    seen = set()
+    unique_candidates = []
+    for candidate in candidates:
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_candidates.append(candidate)
+
+    for candidate in unique_candidates:
+        if candidate.exists() and candidate.is_file():
+            return {
+                "input_path": input_path,
+                "resolved_path": str(candidate.resolve()),
+                "exists": True,
+                "reason": "",
+            }
+
+    resolved_path = str(unique_candidates[0]) if unique_candidates else str(raw_path)
+    return {
+        "input_path": input_path,
+        "resolved_path": resolved_path,
+        "exists": False,
+        "reason": "文件不存在，请使用完整路径或重新选择文件",
+    }
 
 
 def _optional_float(value: Any) -> Optional[float]:

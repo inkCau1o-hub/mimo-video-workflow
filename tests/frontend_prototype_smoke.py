@@ -98,6 +98,8 @@ def test_reference_page_contains_full_entry_controls():
         "停止任务",
         "发送到分镜",
         "下一步：生成分镜",
+        "路径有效",
+        "路径缺失",
     ):
         assert text in reference_page, f"ReferencePage missing control text: {text}"
 

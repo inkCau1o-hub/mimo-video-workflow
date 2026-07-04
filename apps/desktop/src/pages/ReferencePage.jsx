@@ -38,8 +38,10 @@ export function ReferencePage({
   activity,
   job,
   project,
+  validation,
   onCancelJob,
   onGoStoryboard,
+  onValidateReferenceVideos,
   onSetReferenceText,
   onSetReferenceVideos,
   onTranscribeReference,
@@ -54,6 +56,15 @@ export function ReferencePage({
   const savedText = selectReferenceText(activity, project);
   const savedVideos = useMemo(() => pickList(activity, project, "reference_videos"), [activity, project]);
   const isRunning = Boolean(job && !terminalJobStatus(job.status));
+  const validationByInput = useMemo(() => {
+    const result = new Map();
+    for (const item of validation?.videos || []) {
+      result.set(item.input_path, item);
+      result.set(item.resolved_path, item);
+    }
+    return result;
+  }, [validation]);
+  const hasMissingPaths = Boolean(videoQueue.length && validation && !validation.ok);
 
   useEffect(() => {
     setReferenceText(savedText);
@@ -62,6 +73,12 @@ export function ReferencePage({
   useEffect(() => {
     setVideoQueue(savedVideos);
   }, [savedVideos]);
+
+  useEffect(() => {
+    if (project && videoQueue.length > 0) {
+      onValidateReferenceVideos?.(videoQueue);
+    }
+  }, [onValidateReferenceVideos, project, videoQueue]);
 
   const addVideoPaths = (paths) => {
     const next = paths.map((path) => String(path || "").trim()).filter(Boolean);
@@ -108,6 +125,7 @@ export function ReferencePage({
   };
 
   const canTranscribe = Boolean(project && videoQueue.length > 0);
+  const canStartTranscribe = canTranscribe && validation?.ok && validation?.videos?.length === videoQueue.length;
 
   return (
     <div className="page-grid two-column">
@@ -214,6 +232,16 @@ export function ReferencePage({
                   <div>
                     <strong>{fileName(path)}</strong>
                     <span>{path}</span>
+                    {validationByInput.has(path) ? (
+                      <em className={validationByInput.get(path)?.exists ? "path-state ok" : "path-state missing"}>
+                        {validationByInput.get(path)?.exists ? "路径有效" : "路径缺失"}
+                      </em>
+                    ) : (
+                      <em className="path-state">等待校验</em>
+                    )}
+                    {validationByInput.get(path)?.reason ? (
+                      <small>{validationByInput.get(path).reason}</small>
+                    ) : null}
                   </div>
                   <button type="button" onClick={() => removeVideo(path)} disabled={isRunning}>
                     移除
@@ -228,7 +256,7 @@ export function ReferencePage({
             type="button"
             className="primary"
             onClick={() => onTranscribeReference({ videos: videoQueue, model_size: modelSize })}
-            disabled={!canTranscribe || isRunning}
+            disabled={!canStartTranscribe || isRunning}
           >
             开始转写
           </button>
@@ -239,6 +267,9 @@ export function ReferencePage({
             清空队列
           </button>
         </div>
+        {hasMissingPaths ? (
+          <p className="error-text">有视频路径缺失，请输入完整路径后再开始转写。</p>
+        ) : null}
         <div className="job-progress">
           <div className="queue-header">
             <strong>转写进度</strong>

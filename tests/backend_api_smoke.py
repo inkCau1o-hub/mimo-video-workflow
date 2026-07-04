@@ -241,14 +241,40 @@ def test_backend_http_workflow_chain():
             state.assembly_planner = FakeAssemblyPlanner()
             state.assembly_renderer = FakeAssemblyRenderer()
 
+            agent_reference = Path(tmpdir) / "agent-reference.mp4"
+            reference_video = Path(tmpdir) / "reference.mp4"
+            agent_reference.write_bytes(b"fake-video")
+            reference_video.write_bytes(b"fake-video")
+
+            status, payload = request_json(
+                base_url,
+                "POST",
+                f"/projects/{project_id}/reference/validate-videos",
+                {"videos": [str(reference_video), "missing-reference.mp4"]},
+            )
+            assert status == 200, payload
+            assert payload["ok"] is False
+            assert payload["videos"][0]["exists"] is True
+            assert payload["videos"][1]["exists"] is False
+
+            status, payload = request_json(
+                base_url,
+                "POST",
+                f"/projects/{project_id}/reference/transcribe",
+                {"videos": ["missing-reference.mp4"], "model_size": "tiny"},
+            )
+            assert status == 400, payload
+            assert "路径不完整" in payload["error"]
+
             status, payload = request_json(
                 base_url,
                 "POST",
                 f"/projects/{project_id}/reference/videos",
-                {"videos": ["/tmp/agent-reference.mp4"]},
+                {"videos": [str(agent_reference)]},
             )
             assert status == 200, payload
-            assert payload["activity"]["reference_videos"] == ["/tmp/agent-reference.mp4"]
+            assert payload["validation"]["ok"] is True
+            assert payload["activity"]["reference_videos"] == [str(agent_reference.resolve())]
 
             status, payload = request_json(
                 base_url,
@@ -265,7 +291,7 @@ def test_backend_http_workflow_chain():
                 "POST",
                 f"/projects/{project_id}/reference/transcribe",
                 {
-                    "videos": ["/tmp/reference.mp4"],
+                    "videos": [str(reference_video)],
                     "model_size": "tiny",
                     "product_name": "杜亚智能窗帘",
                     "keywords": ["智能", "安静"],

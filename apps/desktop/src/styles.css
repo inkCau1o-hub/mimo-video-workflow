@@ -501,6 +501,38 @@ pre {
   overflow-wrap: anywhere;
 }
 
+.queue-row small {
+  display: block;
+  margin-top: 4px;
+  color: #8a5a00;
+  font-size: 12px;
+}
+
+.path-state {
+  display: inline-block;
+  width: fit-content;
+  margin-top: 6px;
+  border: 1px solid #d7dce2;
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: #69717d;
+  background: #ffffff;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.path-state.ok {
+  color: #0f6b3e;
+  background: #eef8f1;
+  border-color: #bfe7cc;
+}
+
+.path-state.missing {
+  color: #a01818;
+  background: #fff1f1;
+  border-color: #ffd2d2;
+}
+
 .inline-control {
   display: grid;
   grid-template-columns: auto minmax(120px, 160px);
