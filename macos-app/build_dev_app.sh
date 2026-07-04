@@ -10,15 +10,9 @@ MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 EXECUTABLE_NAME="MiMoWorkflowDev"
 SOURCE_FILE="$SCRIPT_DIR/Sources/MiMoWorkflowDevApp.swift"
-PYTHON_BIN="${PYTHON_BIN:-$(command -v python3)}"
 NPM_BIN="${NPM_BIN:-$(command -v npm)}"
 BACKEND_PORT="${BACKEND_PORT:-8765}"
 FRONTEND_PORT="${FRONTEND_PORT:-5173}"
-
-if [[ ! -x "$PYTHON_BIN" ]]; then
-  echo "python3 not found. Set PYTHON_BIN=/absolute/path/to/python3" >&2
-  exit 1
-fi
 
 if [[ ! -x "$NPM_BIN" ]]; then
   echo "npm not found. Set NPM_BIN=/absolute/path/to/npm" >&2
@@ -54,9 +48,6 @@ plutil -create xml1 "$PLIST"
 /usr/libexec/PlistBuddy -c "Add :NSHighResolutionCapable bool true" "$PLIST"
 /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" "$PLIST"
 /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" "$PLIST"
-/usr/libexec/PlistBuddy -c "Add :RepositoryRoot string $REPO_ROOT" "$PLIST"
-/usr/libexec/PlistBuddy -c "Add :PythonExecutable string $PYTHON_BIN" "$PLIST"
-/usr/libexec/PlistBuddy -c "Add :NpmExecutable string $NPM_BIN" "$PLIST"
 /usr/libexec/PlistBuddy -c "Add :BackendPort string $BACKEND_PORT" "$PLIST"
 /usr/libexec/PlistBuddy -c "Add :FrontendPort string $FRONTEND_PORT" "$PLIST"
 

@@ -12,9 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     private var isLoadingFrontend = false
     private var startedAt = Date()
 
-    private let repositoryRoot: String
-    private let pythonExecutable: String
-    private let npmExecutable: String
+    private let repositoryRoot: URL?
     private let backendPort: Int
     private let frontendPort: Int
 
@@ -28,9 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
     override init() {
         let info = Bundle.main.infoDictionary ?? [:]
-        repositoryRoot = (info["RepositoryRoot"] as? String) ?? FileManager.default.currentDirectoryPath
-        pythonExecutable = (info["PythonExecutable"] as? String) ?? "/usr/bin/python3"
-        npmExecutable = (info["NpmExecutable"] as? String) ?? "/usr/bin/npm"
+        repositoryRoot = Self.resolveRepositoryRoot()
         backendPort = Int((info["BackendPort"] as? String) ?? "8765") ?? 8765
         frontendPort = Int((info["FrontendPort"] as? String) ?? "5173") ?? 5173
         super.init()
@@ -58,6 +54,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    private static func resolveRepositoryRoot() -> URL? {
+        let bundleURL = Bundle.main.bundleURL.standardizedFileURL
+        var candidate = bundleURL.deletingLastPathComponent()
+
+        for _ in 0..<10 {
+            if isRepositoryRoot(candidate) {
+                return candidate.standardizedFileURL
+            }
+            candidate.deleteLastPathComponent()
+        }
+
+        let currentDirectory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).standardizedFileURL
+        if isRepositoryRoot(currentDirectory) {
+            return currentDirectory
+        }
+        return nil
+    }
+
+    private static func isRepositoryRoot(_ url: URL) -> Bool {
+        let backendServer = url.appendingPathComponent("backend/server.py").path
+        let desktopPackage = url.appendingPathComponent("apps/desktop/package.json").path
+        return FileManager.default.fileExists(atPath: backendServer)
+            && FileManager.default.fileExists(atPath: desktopPackage)
     }
 
     private func configureMenu() {
@@ -95,16 +116,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     }
 
     private func startServicesIfNeeded() {
-        let desktopDir = URL(fileURLWithPath: repositoryRoot).appendingPathComponent("apps/desktop").path
-        let logsDir = URL(fileURLWithPath: repositoryRoot).appendingPathComponent("macos-app/build/logs").path
+        guard let repositoryRoot else {
+            showStatus(
+                "无法找到项目目录",
+                details: "请移动整个项目文件夹，并从项目内的 macos-app/build 打开此 App；不要只单独移动 .app。"
+            )
+            return
+        }
+
+        let desktopDir = repositoryRoot.appendingPathComponent("apps/desktop").path
+        let logsDir = repositoryRoot.appendingPathComponent("macos-app/build/logs").path
         try? FileManager.default.createDirectory(atPath: logsDir, withIntermediateDirectories: true)
 
         if !httpAvailable(backendHealthURL, timeout: 0.8) {
             backendProcess = launchProcess(
                 name: "backend",
-                executable: pythonExecutable,
-                arguments: ["-m", "backend.server", "--host", "127.0.0.1", "--port", "\(backendPort)", "--quiet"],
-                workingDirectory: repositoryRoot,
+                executable: "/usr/bin/env",
+                arguments: ["python3", "-m", "backend.server", "--host", "127.0.0.1", "--port", "\(backendPort)", "--quiet"],
+                workingDirectory: repositoryRoot.path,
                 logPath: "\(logsDir)/backend.log"
             )
         }
@@ -112,8 +141,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         if !httpAvailable(frontendURL, timeout: 0.8) {
             frontendProcess = launchProcess(
                 name: "frontend",
-                executable: npmExecutable,
-                arguments: ["run", "dev", "--", "--host", "127.0.0.1", "--port", "\(frontendPort)"],
+                executable: "/usr/bin/env",
+                arguments: ["npm", "run", "dev", "--", "--host", "127.0.0.1", "--port", "\(frontendPort)"],
                 workingDirectory: desktopDir,
                 logPath: "\(logsDir)/frontend.log"
             )
@@ -229,7 +258,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
     private func processEnvironment() -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
-        let fallbackPath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let fallbackPath = [
+            "\(home)/.local/bin",
+            "\(home)/.npm-global/bin",
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin",
+        ].joined(separator: ":")
         if let currentPath = environment["PATH"], !currentPath.isEmpty {
             environment["PATH"] = "\(fallbackPath):\(currentPath)"
         } else {

@@ -8,6 +8,7 @@ The app is intentionally a dev prototype:
 - It starts the local Python backend on `127.0.0.1:8765` when needed.
 - It starts the Vite frontend on `127.0.0.1:5173` when needed.
 - It loads the existing desktop web UI with `auto_open=latest&start_page=voiceover`, so the latest project opens directly on the voiceover page for playback and per-segment regeneration checks.
+- It discovers the project root at runtime by walking upward from the `.app` location, so the whole project folder can be moved without rebuilding the app.
 
 ## Build
 
@@ -28,6 +29,14 @@ open -n "macos-app/build/MiMo Workflow Dev.app"
 ```
 
 You can also double-click the app in Finder.
+
+Keep the app inside this project folder, for example:
+
+```text
+macos-app/build/MiMo Workflow Dev.app
+```
+
+Moving the whole project folder is supported. Moving only the `.app` out of the project folder is not supported by this dev prototype, because the backend and frontend source files are still loaded from the project tree.
 
 ## Smoke Test
 
