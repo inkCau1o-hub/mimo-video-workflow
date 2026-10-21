@@ -9,8 +9,24 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from audio_extractor import AudioExtractor
 from speech_to_text import SpeechToText
 
-video_path = r"C:\Users\Administrator\Desktop\新建文件夹 (7)\e1c5e3c96df1af3e7978521e8df9c427_raw.mp4"
-output_dir = r"C:\Users\Administrator\Desktop\12\output"
+import argparse
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+parser = argparse.ArgumentParser(
+    description="测试语音识别流程：提取音频并用 base 模型转写",
+    usage="python %(prog)s VIDEO_PATH [--output-dir OUTPUT_DIR]",
+)
+parser.add_argument("video_path", help="要测试的视频文件路径")
+parser.add_argument(
+    "--output-dir",
+    default=os.path.join(SCRIPT_DIR, "output"),
+    help="音频输出目录（默认：项目目录下的 output/）",
+)
+args = parser.parse_args()
+
+video_path = args.video_path
+output_dir = args.output_dir
 
 print("=" * 50)
 print("测试语音识别流程")

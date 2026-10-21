@@ -1,5 +1,20 @@
+import argparse
 import os
 import sys
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+parser = argparse.ArgumentParser(
+    description="诊断 faster-whisper：加载 base 模型并转写一个音频文件",
+    usage="python %(prog)s [AUDIO_PATH]",
+)
+parser.add_argument(
+    "audio_path",
+    nargs="?",
+    default=os.path.join(SCRIPT_DIR, "output", "audio.wav"),
+    help="要转写的音频文件路径（默认：项目目录下的 output/audio.wav）",
+)
+args = parser.parse_args()
 
 print("=== 开始诊断 ===")
 
@@ -17,7 +32,7 @@ try:
     print(f"    模型加载成功! 耗时: {time.time()-start:.2f}秒")
 
     print("\n[3] 尝试转录...")
-    audio_path = r"c:\Users\Administrator\Desktop\12\output\audio.wav"
+    audio_path = args.audio_path
     segments, info = model.transcribe(audio_path, language="zh")
     print(f"    检测语言: {info.language}")
 
