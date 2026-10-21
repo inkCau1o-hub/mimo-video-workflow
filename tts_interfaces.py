@@ -4,6 +4,7 @@ from pathlib import Path
 import requests
 
 import config
+from material_catalog import probe_duration
 
 
 class MimoTTSClient:
@@ -16,8 +17,7 @@ class MimoTTSClient:
         self.voice = voice or config.TTS_VOICE
 
     def check_api_key(self):
-        if not self.api_key:
-            raise ValueError("AI API Key 未配置")
+        self.api_key = config.validate_api_key(self.api_key)
 
     def synthesize(
         self,
@@ -29,6 +29,8 @@ class MimoTTSClient:
         timeout=120,
     ):
         self.check_api_key()
+        if audio_format not in {"mp3", "wav", "flac", "opus", "aac"}:
+            raise ValueError("不支持的音频格式")
         if not str(text or "").strip():
             raise ValueError("待合成文本不能为空")
 
@@ -51,7 +53,10 @@ class MimoTTSClient:
             timeout=timeout,
         )
         audio_data = self._parse_audio_response(response)
-        output.write_bytes(base64.b64decode(audio_data))
+        decoded = base64.b64decode(audio_data, validate=True)
+        if not decoded:
+            raise ValueError("TTS API 返回了空音频")
+        output.write_bytes(decoded)
         return output
 
     def synthesize_segments(
@@ -61,12 +66,17 @@ class MimoTTSClient:
         style_prompt="用自然、清晰、适合短视频口播的语气朗读。",
         voice=None,
         audio_format="mp3",
+        progress_callback=None,
+        cancel_check=None,
     ):
         output_dir = Path(output_dir).expanduser()
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        segments = list(segments)
         results = []
         for index, segment in enumerate(segments, start=1):
+            if cancel_check:
+                cancel_check()
             if isinstance(segment, dict):
                 segment_id = segment.get("segment_id") or segment.get("shot_id") or f"segment_{index:03d}"
                 text = segment.get("text") or segment.get("tts_text") or segment.get("script_text")
@@ -83,7 +93,15 @@ class MimoTTSClient:
                 voice=voice,
                 audio_format=audio_format,
             )
-            results.append({"segment_id": str(segment_id), "audio_path": str(audio_path)})
+            if cancel_check:
+                cancel_check()
+            duration = probe_duration(str(audio_path))
+            if not duration or duration <= 0:
+                raise ValueError("生成的音频无法读取时长，请检查音频响应和 ffmpeg/ffprobe 安装。")
+            results.append({"segment_id": str(segment_id), "audio_path": str(audio_path),
+                            "duration_seconds": duration})
+            if progress_callback:
+                progress_callback(10 + 80 * index / max(len(segments), 1), f"配音 {index}/{len(segments)}")
         return results
 
     def _headers(self):

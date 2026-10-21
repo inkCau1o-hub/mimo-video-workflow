@@ -43,6 +43,8 @@ class AudioExtractor:
                 cmd,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 check=True
             )
             print(f"[INFO] 音频提取完成: {audio_path}")
@@ -84,6 +86,8 @@ class AudioExtractor:
                 cmd,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 check=True
             )
             print(f"[INFO] 音频提取完成: {audio_path}")

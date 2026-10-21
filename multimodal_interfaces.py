@@ -54,7 +54,7 @@ class FrameExtractor:
             "-y",
             str(output_pattern),
         ]
-        subprocess.run(cmd, capture_output=True, text=True, check=True)
+        subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", check=True)
 
         return sorted(str(path) for path in frame_dir.glob("frame_*.jpg"))
 

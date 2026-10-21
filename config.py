@@ -6,6 +6,15 @@ from pathlib import Path
 
 APP_NAME = "短视频文案生成工具"
 
+
+def validate_api_key(value):
+    key = str(value or "").strip()
+    if not key:
+        raise ValueError("AI API Key 未配置")
+    if not key.isascii() or any(char.isspace() or ord(char) < 32 for char in key):
+        raise ValueError("API Key 格式无效，请只填写密钥，不要包含地址、说明或换行。")
+    return key
+
 WORKING_DIR = Path(__file__).resolve().parent
 
 DEFAULT_API_BASE_URL = "https://token-plan-cn.xiaomimimo.com/v1"

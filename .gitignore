@@ -19,8 +19,10 @@ config.local.json
 *.local.json
 *.secret.json
 .venv
+.venv-windows/
 venv/
 env/
+windows-app/logs/
 
 # Local media and generated assets
 *.mp4
@@ -47,3 +49,6 @@ env/
 # Editor and OS metadata
 .vscode/
 .idea/
+node_modules/
+apps/desktop/node_modules
+apps/desktop/dist/

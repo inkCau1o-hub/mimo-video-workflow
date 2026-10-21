@@ -7,6 +7,26 @@ import requests
 import config
 
 
+def text_generation_options(model, max_tokens):
+    # MiMo's completion budget includes reasoning; these production steps need final text.
+    if str(model).lower().startswith("mimo-"):
+        return {"max_completion_tokens": max_tokens, "thinking": {"type": "disabled"}}
+    return {"max_tokens": max_tokens}
+
+
+def parse_chat_text(result):
+    choices = result.get("choices") or []
+    if not choices:
+        raise ValueError("模型未返回正文，请重试或检查接口配置。")
+    choice = choices[0]
+    if choice.get("finish_reason") == "length":
+        raise ValueError("模型输出达到长度上限，结果未保存，请缩短内容或提高输出额度。")
+    content = (choice.get("message") or {}).get("content")
+    if not isinstance(content, str) or not content.strip():
+        raise ValueError("模型返回正文为空，结果未保存，请重试或检查模型配置。")
+    return content.strip()
+
+
 class OpenAICompatibleClient:
     def __init__(self, api_key=None, api_url=None, model=None):
         self.api_key = api_key or config.API_KEY
@@ -14,8 +34,7 @@ class OpenAICompatibleClient:
         self.model = model or config.API_MODEL
 
     def check_api_key(self):
-        if not self.api_key:
-            raise ValueError("AI API Key 未配置")
+        self.api_key = config.validate_api_key(self.api_key)
 
     def chat(self, messages, model=None, temperature=0.7, max_tokens=2000, timeout=60):
         self.check_api_key()
@@ -23,7 +42,7 @@ class OpenAICompatibleClient:
             "model": model or self.model,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": max_tokens,
+            **text_generation_options(model or self.model, max_tokens),
         }
         response = requests.post(
             self.api_url,
@@ -61,7 +80,7 @@ class OpenAICompatibleClient:
     def _parse_response(self, response):
         if response.status_code == 200:
             result = response.json()
-            return result["choices"][0]["message"]["content"]
+            return parse_chat_text(result)
         if response.status_code == 401:
             raise Exception("API Key 无效，请检查配置")
         if response.status_code == 429:

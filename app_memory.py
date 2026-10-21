@@ -122,7 +122,6 @@ def memory_context():
             "selling_points",
             "requirements",
             "model_size",
-            "enable_cleaning",
             "enable_titles",
             "output_dir",
         ]:

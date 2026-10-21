@@ -80,9 +80,14 @@ class MaterialCatalog:
         save_path: Optional[str] = None,
         continue_on_error: bool = True,
         as_schema: bool = False,
+        progress_callback=None,
+        cancel_check=None,
     ) -> List[Any]:
         assets = []
-        for video_path in video_paths:
+        video_paths = list(video_paths)
+        for index, video_path in enumerate(video_paths, start=1):
+            if cancel_check:
+                cancel_check()
             try:
                 asset = self.analyze_video(
                     video_path,
@@ -97,6 +102,10 @@ class MaterialCatalog:
                     raise
                 asset = self.error_asset(video_path, exc)
             assets.append(asset)
+            if cancel_check:
+                cancel_check()
+            if progress_callback:
+                progress_callback(10 + 80 * index / max(len(video_paths), 1), f"素材 {index}/{len(video_paths)}")
 
         if save_path:
             self.save_catalog(assets, save_path)

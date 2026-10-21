@@ -16,6 +16,9 @@ from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
+from media_render import RenderCancelled, RenderError, _validated_edit, render_assembly
+from shot_timing import shot_duration, validate_cue_bounds
+
 
 Number = Optional[float]
 
@@ -218,7 +221,18 @@ class AssemblyPlanner:
                 min_score=0.0,
                 scene_index=index,
             )
-            selected = matches[0] if matches and matches[0].score >= self.min_match_score else None
+            selected_id = (scene["raw"].get("metadata") or {}).get("material_asset_id")
+            if selected_id not in (None, ""):
+                selected_asset = next(
+                    (asset for asset in assets if asset["asset_id"] == str(selected_id)), None
+                )
+                if selected_asset is None:
+                    raise ValueError(
+                        f"Shot {index + 1}: metadata.material_asset_id does not exist in material_assets."
+                    )
+                selected = self.matcher.score_scene_asset(scene, selected_asset)
+            else:
+                selected = matches[0] if matches and matches[0].score >= self.min_match_score else None
             alternatives = [match.to_dict() for match in matches]
 
             if not selected:
@@ -228,6 +242,16 @@ class AssemblyPlanner:
             if selected:
                 video_clip = self._build_video_clip(scene, selected, start, end, duration)
                 video_clips.append(video_clip)
+                if scene["edit"] is not None:
+                    available = selected.asset.get("duration")
+                    if video_clip["source_out"] is not None:
+                        available = video_clip["source_out"]
+                    if available is not None and available - video_clip["source_in"] + 1e-6 < duration:
+                        if scene["edit"]["shortage"] == "error":
+                            raise ValueError(f"Shot {index + 1}: selected video is shorter than the target duration.")
+                        warnings.append(
+                            f"Shot {index + 1}: selected video is shorter than the target duration; its last frame will be frozen."
+                        )
 
             audio_clip = None
             if voiceover and voiceover.get("audio_path"):
@@ -240,10 +264,12 @@ class AssemblyPlanner:
                 "segment_id": scene["scene_id"],
                 "shot_id": scene["scene_id"],
                 "scene_index": index,
-                "timeline_start": _round_seconds(start),
-                "timeline_end": _round_seconds(end),
-                "duration": _round_seconds(duration),
+                "timeline_start": start if scene["edit"] is not None else _round_seconds(start),
+                "timeline_end": end if scene["edit"] is not None else _round_seconds(end),
+                "duration": duration if scene["edit"] is not None else _round_seconds(duration),
                 "script_text": scene.get("text", ""),
+                "tts_text": scene.get("tts_text", ""),
+                "edit": scene["edit"],
                 "visual_tags": scene["visual_tags"],
                 "material_requirements": scene["material_requirements"],
                 "transition": scene.get("transition", ""),
@@ -261,7 +287,7 @@ class AssemblyPlanner:
             "schema_version": "dict-v1",
             "source": "media_assembler.AssemblyPlanner",
             "timeline": {
-                "duration": _round_seconds(timeline_duration),
+                "duration": timeline_duration if any(s["edit"] is not None for s in scenes) else _round_seconds(timeline_duration),
                 "fps": self.fps,
                 "resolution": {
                     "width": int(self.resolution[0]),
@@ -301,16 +327,40 @@ class AssemblyPlanner:
         voiceover: Optional[Mapping[str, Any]],
         cursor: float,
     ) -> Tuple[float, float, float]:
+        voiceover_duration = _number_or_none(voiceover.get("duration")) if voiceover else None
+        edit = scene.get("edit")
+        if edit is not None:
+            if not voiceover or not voiceover.get("audio_path"):
+                voiceover_duration = None
+            if edit["duration_mode"] == "manual":
+                duration = _number_or_none(scene["raw"].get("duration_seconds", scene.get("duration")))
+                if duration is None or duration <= 0:
+                    raise ValueError("Manual shot duration_seconds must be a positive finite number.")
+                if voiceover_duration and duration + 1e-6 < voiceover_duration:
+                    raise ValueError("Manual shot duration cannot be shorter than existing narration.")
+                duration = shot_duration(edit, duration, voiceover_duration)
+                validate_cue_bounds(edit["subtitle"], duration)
+                return cursor, cursor + duration, duration
+        if voiceover_duration is not None and voiceover_duration > 0:
+            # Narration follows the rendered shot order, not stale storyboard timestamps.
+            duration = shot_duration(edit, voiceover_duration, voiceover_duration) if edit is not None else voiceover_duration
+            if edit is not None:
+                validate_cue_bounds(edit["subtitle"], duration)
+            return cursor, cursor + duration, duration
+
         explicit_start = scene.get("start")
         explicit_end = scene.get("end")
         duration = scene.get("duration")
 
-        if duration is None and voiceover:
-            duration = voiceover.get("duration")
         if duration is None and explicit_start is not None and explicit_end is not None:
             duration = max(0.0, float(explicit_end) - float(explicit_start))
         if duration is None or duration <= 0:
             duration = self.default_scene_duration
+
+        if edit is not None:
+            duration = shot_duration(edit, duration)
+            validate_cue_bounds(edit["subtitle"], duration)
+            return cursor, cursor + duration, duration
 
         start = float(explicit_start) if explicit_start is not None else cursor
         end = float(explicit_end) if explicit_end is not None and explicit_end > start else start + duration
@@ -326,9 +376,17 @@ class AssemblyPlanner:
         duration: float,
     ) -> Dict[str, Any]:
         asset_duration = match.asset.get("duration")
+        edit = scene.get("edit")
         source_out = duration
         if asset_duration is not None:
             source_out = min(duration, max(0.0, float(asset_duration)))
+        if edit is not None:
+            source_out = edit["source_out"]
+            if asset_duration is not None and (
+                edit["source_in"] >= asset_duration or
+                (source_out is not None and source_out > asset_duration + 1e-6)
+            ):
+                raise ValueError("The selected video range exceeds the known material duration.")
 
         return {
             "clip_id": f"video_{scene['scene_id']}",
@@ -336,12 +394,18 @@ class AssemblyPlanner:
             "kind": "video",
             "asset_id": match.asset_id,
             "source_path": match.asset_path,
-            "source_in": 0.0,
-            "source_out": _round_seconds(source_out),
-            "timeline_start": _round_seconds(start),
-            "timeline_end": _round_seconds(end),
-            "duration": _round_seconds(duration),
-            "fit": "cover",
+            "source_in": edit["source_in"] if edit is not None else 0.0,
+            "source_out": source_out if edit is not None else _round_seconds(source_out),
+            "timeline_start": start if edit is not None else _round_seconds(start),
+            "timeline_end": end if edit is not None else _round_seconds(end),
+            "duration": duration if edit is not None else _round_seconds(duration),
+            "fit": edit["fit"] if edit is not None else "cover",
+            "crop_x": edit["crop_x"] if edit is not None else .5,
+            "crop_y": edit["crop_y"] if edit is not None else .5,
+            "shortage": edit["shortage"] if edit is not None else "freeze",
+            "edit": edit,
+            "script_text": scene.get("text", ""),
+            "tts_text": scene.get("tts_text", ""),
             "match_score": round(match.score, 4),
         }
 
@@ -353,6 +417,9 @@ class AssemblyPlanner:
         end: float,
         duration: float,
     ) -> Dict[str, Any]:
+        lead = (scene.get("edit") or {}).get("lead_in_seconds", 0)
+        spoken = _number_or_none(voiceover.get("duration"))
+        audio_duration = spoken if spoken and scene.get("edit") is not None else duration
         return {
             "clip_id": f"voiceover_{scene['scene_id']}",
             "track_id": "voiceover",
@@ -360,19 +427,19 @@ class AssemblyPlanner:
             "voiceover_id": voiceover["voiceover_id"],
             "source_path": voiceover["audio_path"],
             "source_in": 0.0,
-            "source_out": _round_seconds(duration),
-            "timeline_start": _round_seconds(start),
-            "timeline_end": _round_seconds(end),
-            "duration": _round_seconds(duration),
+            "source_out": audio_duration if scene["edit"] is not None else _round_seconds(duration),
+            "timeline_start": start + lead if scene["edit"] is not None else _round_seconds(start),
+            "timeline_end": start + lead + audio_duration if scene["edit"] is not None else _round_seconds(end),
+            "duration": audio_duration if scene["edit"] is not None else _round_seconds(duration),
             "text": voiceover.get("text", ""),
         }
 
 
 class FFmpegAssemblyRenderer:
-    """Safe ffmpeg command builder for future rendering integration.
+    """Legacy command preview plus transactional multi-shot FFmpeg rendering.
 
-    The renderer does not execute commands. It validates inputs and returns an
-    argv list that callers can inspect, log, or run explicitly elsewhere.
+    build_command/validate_plan and the default dry run retain their legacy
+    single-clip preview semantics. Only render(dry_run=False) executes media work.
     """
 
     def __init__(self, ffmpeg_path: str = "ffmpeg"):
@@ -498,13 +565,93 @@ class FFmpegAssemblyRenderer:
     def command_string(self, *args: Any, **kwargs: Any) -> str:
         return shlex.join(self.build_command(*args, **kwargs))
 
-    def render(self, *args: Any, dry_run: bool = True, **kwargs: Any) -> List[str]:
-        command = self.build_command(*args, **kwargs)
+    def render(
+        self,
+        plan: Any,
+        output_path: str,
+        overwrite: bool = False,
+        include_voiceover: bool = True,
+        require_existing_inputs: bool = False,
+        *,
+        dry_run: bool = True,
+        progress_callback: Any = None,
+        cancel_callback: Any = None,
+        cancel_check: Any = None,
+        resolution: Optional[Tuple[int, int]] = None,
+        aspect_ratio: Optional[str] = None,
+        fps: Optional[int] = None,
+        video_bitrate: str = "2500k",
+        audio_bitrate: str = "128k",
+        crf: int = 23,
+        preset: str = "veryfast",
+        subtitles: bool = True,
+        font_path: Optional[str] = None,
+        font_name: Optional[str] = None,
+        ffprobe_path: Optional[str] = None,
+        base_dir: Optional[str] = None,
+        process_timeout: float = 600.0,
+        audio_settings: Optional[Mapping[str, Any]] = None,
+    ) -> Any:
+        """Render a planner dict or AssemblyPlan; no plan fields are mutated.
+
+        dry_run=True returns the unchanged legacy argv preview (no I/O).
+        dry_run=False returns a JSON-safe dict with output_path (absolute),
+        duration_seconds (probed), planned_duration_seconds, width, height,
+        fps, segment_count, size_bytes, and warnings. Outputs must be .mp4.
+        Real rendering always validates every input, irrespective of the legacy
+        require_existing_inputs flag. Relative paths use base_dir or cwd.
+
+        progress_callback(float) receives monotonic 0..1 on this calling thread;
+        1 means the final MP4 has been published. cancel_check() (or its alias
+        cancel_callback()) returning
+        truthy raises RenderCancelled, a RenderError subclass. Callbacks must
+        be quick; callback failures become redacted RenderError. The final
+        progress notification is best-effort after the commit point.
+
+        Shots are hard-cut in list order (timeline gaps/overlaps and transition
+        hints are not applied). Full measured narration from source_in sets
+        each duration, rounded UP to a frame; manual duration uses the planned
+        length and refuses to truncate measured narration. Stale audio source_out
+        estimates are ignored. Without narration, use planned duration.
+        Editor source ranges are validated against measured video duration.
+        Short visuals freeze their last frame with a warning, or fail for
+        shortage=error. Material audio is ALWAYS muted; missing narration produces
+        a silent audio track. include_voiceover=False ignores narration files.
+
+        audio_settings optionally enables two-pass per-clip loudness normalization,
+        voice gain and local background music with fades, looping and sidechain
+        ducking. Original audio files are never changed. Defaults preserve legacy
+        sound; result metadata records the applied settings and measurements.
+
+        Resolution defaults to plan timeline or 720x1280; aspect_ratio selects
+        9:16 or 16:9 (720x1280/1280x720 when resolution is omitted). Explicit
+        dimensions must be even; fps defaults to plan or 30. video_bitrate is
+        the H.264 VBV ceiling, with crf controlling quality. Subtitles use libass
+        and a discovered CJK font, or font_path + optional family font_name.
+        Real rendering prefers system FFmpeg over bundled executables and
+        checks the ass filter when burning subtitles. Dry runs keep ffmpeg_path.
+
+        RenderError.code is safe to persist; messages never contain input paths,
+        subtitle text, commands or FFmpeg stderr. Cancellation/failure terminates
+        children and cleans staging files, leaving any old output untouched.
+        overwrite=False refuses an existing destination (including commit races).
+        """
         if dry_run:
-            return command
-        raise RuntimeError(
-            "FFmpegAssemblyRenderer does not execute commands yet; inspect "
-            "build_command() output and run it explicitly from a trusted caller."
+            return self.build_command(
+                plan, output_path, overwrite, include_voiceover, require_existing_inputs
+            )
+        if cancel_check is not None and cancel_callback is not None:
+            raise RenderError("invalid_options", "Pass either cancel_check or cancel_callback, not both.")
+        return render_assembly(
+            _to_plain_data(plan), output_path, ffmpeg_path=self.ffmpeg_path,
+            overwrite=overwrite, include_voiceover=include_voiceover,
+            progress_callback=progress_callback,
+            cancel_callback=cancel_check if cancel_check is not None else cancel_callback,
+            resolution=resolution, aspect_ratio=aspect_ratio, fps=fps,
+            video_bitrate=video_bitrate, audio_bitrate=audio_bitrate,
+            crf=crf, preset=preset, subtitles=subtitles, font_path=font_path,
+            font_name=font_name, ffprobe_path=ffprobe_path, base_dir=base_dir,
+            process_timeout=process_timeout, audio_settings=audio_settings,
         )
 
     def _first_clip(self, plan: Mapping[str, Any], kind: str) -> Optional[Dict[str, Any]]:
@@ -601,6 +748,9 @@ def _schema_payload_for_assembly_plan(module: Any, payload: Mapping[str, Any]) -
                 "alternatives": segment.get("alternatives") or [],
                 "visual_tags": segment.get("visual_tags") or [],
                 "material_requirements": segment.get("material_requirements"),
+                "script_text": segment.get("script_text", ""),
+                "tts_text": segment.get("tts_text", ""),
+                "edit": segment.get("edit"),
             },
         }
         if item_cls is not None and hasattr(item_cls, "from_dict"):
@@ -636,6 +786,13 @@ def _schema_payload_for_assembly_plan(module: Any, payload: Mapping[str, Any]) -
 
 def normalize_scene(scene: Any, index: int = 0) -> Dict[str, Any]:
     data = _to_plain_mapping(scene)
+    edit = None
+    metadata = data.get("metadata") or {}
+    if "edit" in metadata:
+        try:
+            edit = _validated_edit(metadata["edit"])
+        except RenderError as exc:
+            raise ValueError(str(exc)) from None
     requirements = _first_value(
         data,
         "material_requirements",
@@ -674,6 +831,8 @@ def normalize_scene(scene: Any, index: int = 0) -> Dict[str, Any]:
     return {
         "scene_id": str(_first_value(data, "scene_id", "shot_id", "segment_id", "id", default=f"scene_{index + 1:03d}")),
         "index": index,
+        "edit": edit,
+        "tts_text": _string_or_empty(data.get("tts_text")),
         "text": _string_or_empty(_first_value(
             data,
             "script_text",
@@ -769,7 +928,12 @@ def normalize_voiceover(segment: Any, index: int = 0) -> Dict[str, Any]:
     data = _to_plain_mapping(segment)
     start = _number_or_none(_first_value(data, "start", "start_time", "start_seconds", "timeline_start"))
     end = _number_or_none(_first_value(data, "end", "end_time", "end_seconds", "timeline_end"))
-    duration = _number_or_none(_first_value(data, "duration", "duration_seconds"))
+    duration = None
+    for key in ("duration_seconds", "duration"):
+        candidate = _number_or_none(data.get(key))
+        if candidate is not None and candidate > 0:
+            duration = candidate
+            break
     if duration is None and start is not None and end is not None:
         duration = max(0.0, end - start)
 
@@ -836,7 +1000,11 @@ def _voiceover_for_scene(
     if scene_id and scene_id in by_scene:
         return dict(by_scene[scene_id])
     if index < len(voiceovers):
-        return dict(voiceovers[index])
+        candidate = voiceovers[index]
+        raw = candidate.get("raw") or {}
+        # A missing shot's narration must not borrow a different shot's audio.
+        if not (raw.get("scene_id") or raw.get("shot_id")):
+            return dict(candidate)
     return None
 
 
@@ -1036,6 +1204,8 @@ def _same_path(left: Path, right: Path) -> bool:
 __all__ = [
     "AssemblyPlanner",
     "FFmpegAssemblyRenderer",
+    "RenderCancelled",
+    "RenderError",
     "LabelMatch",
     "LabelMatcher",
     "normalize_asset",

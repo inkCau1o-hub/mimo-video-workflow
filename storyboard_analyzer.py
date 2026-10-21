@@ -130,6 +130,8 @@ class StoryboardAnalyzer:
         target_text = f"{target_duration_seconds:g} 秒" if target_duration_seconds else "由文案节奏自行判断"
         shot_count_text = f"{shot_count} 个分镜" if shot_count else "按内容自然拆分"
         keywords = "、".join(reference.keywords) if reference.keywords else "无"
+        product_profile = reference.metadata.get("product_profile") if isinstance(reference.metadata, dict) else {}
+        profile_text = _format_product_profile(product_profile)
 
         user_prompt = f"""请分析下面的参考文案，并拆成短视频分镜。
 
@@ -138,6 +140,8 @@ class StoryboardAnalyzer:
 关键词: {keywords}
 目标总时长: {target_text}
 期望分镜数量: {shot_count_text}
+产品基础资料:
+{profile_text}
 
 参考文案:
 {reference.source_text}
@@ -286,6 +290,29 @@ def _as_text(value: Any) -> str:
     if isinstance(value, (dict, list)):
         return json.dumps(value, ensure_ascii=False)
     return str(value).strip()
+
+
+def _format_product_profile(profile: Any) -> str:
+    if not isinstance(profile, dict) or not profile:
+        return "无"
+    labels = [
+        ("product_name", "产品名称"),
+        ("brand_name", "品牌/店铺"),
+        ("features", "产品特点"),
+        ("selling_points", "核心卖点"),
+        ("target_audience", "目标人群"),
+        ("scenarios", "使用场景"),
+        ("promotion", "价格/活动"),
+        ("rewrite_requirements", "转写/改写要求"),
+        ("tone", "文案风格"),
+        ("forbidden_claims", "禁用表达"),
+    ]
+    lines = []
+    for key, label in labels:
+        value = _as_text(profile.get(key))
+        if value:
+            lines.append(f"- {label}: {value}")
+    return "\n".join(lines) if lines else "无"
 
 
 def _as_str_list(value: Any) -> List[str]:

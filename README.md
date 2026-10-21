@@ -149,7 +149,6 @@ python main.py          # 或 python main.py --cli
 | `ai_client.py` | OpenAI 兼容的文本 / 图像客户端 |
 | `audio_extractor.py` | 用 FFmpeg 从视频中提取音频 |
 | `speech_to_text.py` | faster-whisper 本地语音识别 |
-| `text_cleaner.py` | 转写文本清洗 |
 | `ai_rewriter.py` | AI 文案改写 |
 | `script_generator.py` | 口播脚本生成（含多版本生成） |
 | `title_generator.py` | 标题生成 |

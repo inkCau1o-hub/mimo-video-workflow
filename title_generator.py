@@ -2,6 +2,7 @@ import requests
 import json
 import os
 import config
+from ai_client import parse_chat_text, text_generation_options
 
 class TitleGenerator:
     def __init__(self, api_key=None, model=None):
@@ -13,6 +14,7 @@ class TitleGenerator:
         if not self.api_key:
             print("[ERROR] 请配置 AI API Key")
             return False
+        self.api_key = config.validate_api_key(self.api_key)
         return True
 
     def generate_titles(self, script_text, count=5):
@@ -77,7 +79,7 @@ class TitleGenerator:
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0.9,
-            "max_tokens": 500
+            **text_generation_options(self.model, 500)
         }
 
         print(f"[INFO] 正在生成短视频标题: {self.model}")
@@ -92,7 +94,7 @@ class TitleGenerator:
 
             if response.status_code == 200:
                 result = response.json()
-                content = result['choices'][0]['message']['content']
+                content = parse_chat_text(result)
                 print(f"[INFO] 标题生成完成")
                 titles = self._parse_titles(content)
                 return titles
@@ -110,7 +112,7 @@ class TitleGenerator:
                 raise Exception(error_msg)
 
         except requests.exceptions.RequestException as e:
-            print(f"[ERROR] 网络请求失败: {e}")
+            print(f"[ERROR] 网络请求失败: {type(e).__name__}")
             raise
 
     def _parse_titles(self, content):
