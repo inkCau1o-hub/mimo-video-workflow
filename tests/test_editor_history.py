@@ -12,6 +12,9 @@ import urllib.request
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+# macOS keeps temp dirs behind the /var -> /private/var symlink; stored project paths are resolved.
+tempfile.tempdir = str(Path(tempfile.gettempdir()).resolve())
+
 from backend.editor_history import HISTORY_LIMIT, validate_shots
 from backend.project_store import ProjectStore
 from backend.server import create_server

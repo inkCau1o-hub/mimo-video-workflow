@@ -13,6 +13,9 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+# macOS keeps temp dirs behind the /var -> /private/var symlink; stored project paths are resolved.
+tempfile.tempdir = str(Path(tempfile.gettempdir()).resolve())
+
 from material_segments import SegmentIndexer, normalize_observations, recommend_segments, sample_windows, source_signature
 from media_render import RenderCancelled, discover_executable
 from backend.jobs import JobRecord

@@ -16,6 +16,9 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+# macOS keeps temp dirs behind the /var -> /private/var symlink; stored project paths are resolved.
+tempfile.tempdir = str(Path(tempfile.gettempdir()).resolve())
+
 from audio_mix import DEFAULT_AUDIO_SETTINGS, validate_audio_settings, voice_processing
 from backend.jobs import JobRecord
 from backend.project_store import ProjectStore

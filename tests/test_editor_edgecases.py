@@ -19,6 +19,9 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+# macOS keeps temp dirs behind the /var -> /private/var symlink; stored project paths are resolved.
+tempfile.tempdir = str(Path(tempfile.gettempdir()).resolve())
+
 
 def offline_environment(directory):
     environment = {

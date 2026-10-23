@@ -13,6 +13,9 @@ from cover_render import render_cover, validate_cover_settings
 from media_render import RenderCancelled, RenderError, discover_executable
 from media_render import _probe
 
+# macOS keeps temp dirs behind the /var -> /private/var symlink; stored project paths are resolved.
+tempfile.tempdir = str(Path(tempfile.gettempdir()).resolve())
+
 
 class CoverTests(unittest.TestCase):
     @classmethod
