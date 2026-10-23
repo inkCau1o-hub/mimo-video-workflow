@@ -8,7 +8,7 @@ cd "$ROOT_DIR"
 
 if [ ! -d "$APP_BUNDLE" ]; then
   echo "未找到开发版 App，正在构建..."
-  ./macos-app/build_dev_app.sh
+  bash ./macos-app/build_dev_app.sh
 fi
 
 open -n "$APP_BUNDLE"

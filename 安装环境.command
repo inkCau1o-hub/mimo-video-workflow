@@ -74,7 +74,7 @@ echo
 echo "== 构建开发版 macOS App =="
 cd "$ROOT_DIR"
 if command -v swiftc >/dev/null 2>&1; then
-  ./macos-app/build_dev_app.sh
+  bash ./macos-app/build_dev_app.sh
 else
   echo "未找到 swiftc，跳过 macOS App 重建。已复制的 macos-app/build/MiMo Workflow Dev.app 仍可尝试打开。"
 fi
