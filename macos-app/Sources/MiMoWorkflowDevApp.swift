@@ -129,10 +129,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         try? FileManager.default.createDirectory(atPath: logsDir, withIntermediateDirectories: true)
 
         if !httpAvailable(backendHealthURL, timeout: 0.8) {
+            // The install script puts the backend's dependencies in .venv; python3 on PATH is the fallback.
+            let venvPython = repositoryRoot.appendingPathComponent(".venv/bin/python").path
+            let usesVenv = FileManager.default.isExecutableFile(atPath: venvPython)
             backendProcess = launchProcess(
                 name: "backend",
-                executable: "/usr/bin/env",
-                arguments: ["python3", "-m", "backend.server", "--host", "127.0.0.1", "--port", "\(backendPort)", "--quiet"],
+                executable: usesVenv ? venvPython : "/usr/bin/env",
+                arguments: (usesVenv ? [] : ["python3"])
+                    + ["-m", "backend.server", "--host", "127.0.0.1", "--port", "\(backendPort)", "--quiet"],
                 workingDirectory: repositoryRoot.path,
                 logPath: "\(logsDir)/backend.log"
             )
