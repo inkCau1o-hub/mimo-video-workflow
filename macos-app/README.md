@@ -7,7 +7,7 @@ The app is intentionally a dev prototype:
 - It opens a native macOS window with `WKWebView`.
 - It starts the local Python backend on `127.0.0.1:8765` when needed.
 - It starts the Vite frontend on `127.0.0.1:5173` when needed.
-- It loads the existing desktop web UI with `auto_open=latest&start_page=voiceover`, so the latest project opens directly on the voiceover page for playback and per-segment regeneration checks.
+- It loads the desktop web UI with `auto_open=latest`. The home page offers two features: 信息流剪辑 (the MiMo workflow) and AI 动画. The backend starts the AI 动画 service only when that feature is opened, and stops its whole process tree when the backend exits.
 - It discovers the project root at runtime by walking upward from the `.app` location, so the whole project folder can be moved without rebuilding the app.
 
 ## Build

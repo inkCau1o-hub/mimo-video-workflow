@@ -21,7 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     }
 
     private var frontendURL: URL {
-        URL(string: "http://127.0.0.1:\(frontendPort)/?auto_open=latest&start_page=voiceover")!
+        URL(string: "http://127.0.0.1:\(frontendPort)/?auto_open=latest")!
     }
 
     override init() {

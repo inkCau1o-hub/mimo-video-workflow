@@ -139,7 +139,13 @@ cd apps/desktop
 npm run dev          # http://127.0.0.1:5173 ，后端默认 http://127.0.0.1:8765
 ```
 
-可用环境变量 `VITE_BACKEND_URL` 覆盖后端地址。启动参数示例：`?auto_open=latest&start_page=voiceover`。
+可用环境变量 `VITE_BACKEND_URL` 覆盖后端地址。启动参数示例：`?auto_open=latest&start_page=voiceover`（直接进入信息流剪辑的配音页）。
+
+### 统一启动器：信息流剪辑与 AI 动画
+
+打开后先到首页，可选「信息流剪辑」或「AI 动画」，顶栏随时切换，两边项目和数据互不相通。`?module=feed|animation|home` 可直接打开指定功能，默认回到上次使用的功能。
+
+AI 动画是独立仓库，默认在本仓库旁边的 `../ai-animation` 或 `modules/ai-animation` 查找，也可以用环境变量 `MIMO_AI_ANIMATION_DIR` 指定，端口用 `MIMO_AI_ANIMATION_PORT`（默认读取它的 `launcher.json`）。后端在第一次进入 AI 动画时按 `launcher.json` 启动它的服务（`GET /modules`、`POST /modules/animation/start|stop`），退出时连同子进程一起关闭；目录或依赖缺失时首页对应卡片显示原因，信息流剪辑照常可用。
 
 **macOS 开发壳**
 

@@ -50,7 +50,7 @@ try {
     foreach ($child in $children) {
         if ($child.HasExited) { throw 'A managed service exited before startup completed. See the redacted logs.' }
     }
-    $url = "$frontendUrl/?auto_open=latest&start_page=voiceover"
+    $url = "$frontendUrl/?auto_open=latest"
     Write-Host "URL: $url"
     if (-not $NoBrowser -and -not $SmokeOnly) {
         $browser = [Diagnostics.Process]::Start((New-BrowserStartInfo $url))

@@ -32,7 +32,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\windows-app\启动开发�
 默认后端 `127.0.0.1:8765`、前端 `127.0.0.1:5173`。默认打开：
 
 ```text
-http://127.0.0.1:5173/?auto_open=latest&start_page=voiceover
+http://127.0.0.1:5173/?auto_open=latest
 ```
 
 换端口或只检查启动：

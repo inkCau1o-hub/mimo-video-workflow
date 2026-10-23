@@ -4,6 +4,7 @@ import argparse
 import json
 import mimetypes
 import re
+import signal
 from email.parser import BytesParser
 from email.policy import default as default_email_policy
 from http import HTTPStatus
@@ -13,6 +14,7 @@ from socketserver import TCPServer
 from typing import Any, Dict, Optional, Tuple
 from urllib.parse import parse_qs, quote, urlparse
 
+from .modules import ModuleManager
 from .project_store import ProjectStore
 from .workflow_api import WorkflowBackend
 from .security import redact
@@ -145,6 +147,13 @@ class WorkflowRequestHandler(BaseHTTPRequestHandler):
 
         if method == "GET" and parts == ["health"]:
             return HTTPStatus.OK, {"ok": True, "service": "mimo-workflow-backend"}
+
+        if method == "GET" and parts == ["modules"]:
+            return HTTPStatus.OK, self.server.modules.describe()
+
+        if method == "POST" and len(parts) == 3 and parts[0] == "modules" and parts[2] in {"start", "stop"}:
+            action = self.server.modules.start if parts[2] == "start" else self.server.modules.stop
+            return HTTPStatus.OK, {"module": action(parts[1])}
 
         if method == "GET" and parts == ["projects"]:
             return HTTPStatus.OK, self.backend.list_projects()
@@ -327,6 +336,7 @@ def create_server(
     server = LocalThreadingHTTPServer((host, int(port)), Handler)
     server.quiet = quiet
     server.backend = backend
+    server.modules = ModuleManager(log_dir=Path(backend.store.root_dir) / ".logs")
     server.allowed_origins = {
         f"http://{name}:{number}" for name in ("localhost", "127.0.0.1")
         for number in (int(frontend_port), server.server_port)
@@ -354,11 +364,16 @@ def main(argv: Optional[list[str]] = None) -> int:
         frontend_port=args.frontend_port,
     )
     print(f"MiMo workflow backend listening on http://{args.host}:{args.port}")
+    def _exit(*_args):
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, _exit)
     try:
         server.serve_forever()
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, SystemExit):
         pass
     finally:
+        server.modules.shutdown()
         server.server_close()
     return 0
 

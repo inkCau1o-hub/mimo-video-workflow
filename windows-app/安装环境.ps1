@@ -71,6 +71,25 @@ try {
         $null = Invoke-CheckedCommand $node.Node @($node.NpmCli, 'ls', '--depth=0') -WorkingDirectory $frontend -Label 'npm dependency verification'
         $null = Invoke-CheckedCommand $node.Node @($probe, $frontend) -Label 'Frontend dependency verification'
     } else { Write-Host 'Frontend dependency checks/install skipped by request.' }
+    Write-Step 'AI animation module (optional)'
+    $animationDir = $env:MIMO_AI_ANIMATION_DIR
+    if (-not $animationDir) {
+        foreach ($candidate in @((Join-Path $root 'modules\ai-animation'), (Join-Path (Split-Path -Parent $root) 'ai-animation'))) {
+            if (Test-Path -LiteralPath (Join-Path $candidate 'launcher.json')) { $animationDir = $candidate; break }
+        }
+    }
+    if ($animationDir -and (Test-Path -LiteralPath (Join-Path $animationDir 'package.json'))) {
+        Write-Host "AI animation: $animationDir"
+        try {
+            $pnpmTool = Resolve-Tool @('pnpm.cmd', 'corepack.cmd')
+            $pnpmArgs = @('install', '--frozen-lockfile')
+            if ((Split-Path -Leaf $pnpmTool) -like 'corepack*') { $pnpmArgs = @('pnpm') + $pnpmArgs }
+            $result = Invoke-CheckedCommand $pnpmTool $pnpmArgs -WorkingDirectory $animationDir -Label 'AI animation install' -TimeoutSeconds 1800 -AllowFailure
+            if ($result.ExitCode -ne 0) { Write-Warning 'AI animation dependencies failed to install; its home card will show as not installed. The feed workflow is unaffected.' }
+        } catch {
+            Write-Warning "AI animation install skipped: $($_.Exception.Message)"
+        }
+    } else { Write-Host 'AI animation folder not found (set MIMO_AI_ANIMATION_DIR); skipped.' }
     if ($BuildFrontend) {
         Write-Step 'Building frontend'
         $null = Invoke-CheckedCommand $node.Node @($node.NpmCli, 'run', 'build') -WorkingDirectory $frontend -Label 'Frontend build'
