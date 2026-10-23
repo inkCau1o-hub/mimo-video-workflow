@@ -217,5 +217,9 @@ PROXY_URL = os.getenv("PROXY_URL") or _USER_CONFIG.get("proxy_url") or ""
 
 UI_FONT_FAMILY = "PingFang SC" if sys.platform == "darwin" else "Microsoft YaHei"
 
-Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
-Path(MODELS_DIR).mkdir(parents=True, exist_ok=True)
+for _directory in (OUTPUT_DIR, MODELS_DIR):
+    try:
+        Path(_directory).mkdir(parents=True, exist_ok=True)
+    except OSError:
+        # Possibly on an external drive that is not connected; whatever needs the folder reports it.
+        pass

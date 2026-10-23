@@ -1,8 +1,13 @@
+import json
+import os
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 import config  # noqa: E402
 
@@ -25,6 +30,22 @@ class SharedModelSettingsTest(unittest.TestCase):
         values = config.shared_model_settings(env={}, user_config={})
         self.assertNotIn("MIMO_API_KEY", values)
         self.assertEqual(set(values), {"MIMO_BASE_URL", "MIMO_MODEL", "MIMO_VISION_MODEL"})
+
+
+class UnavailableFoldersTest(unittest.TestCase):
+    def test_import_survives_folders_on_a_disconnected_drive(self):
+        with tempfile.TemporaryDirectory() as root:
+            blocker = Path(root) / "not-a-folder"
+            blocker.write_text("", encoding="utf-8")  # nothing can be created below a file, not even by root
+            settings = Path(root) / "config.json"
+            settings.write_text(json.dumps({"output_dir": str(blocker / "output"), "models_dir": str(blocker / "models")}),
+                                encoding="utf-8")
+            env = {key: value for key, value in os.environ.items() if key not in ("OUTPUT_DIR", "MODELS_DIR")}
+            env["VIDEO_SCRIPT_CONFIG_PATH"] = str(settings)
+            done = subprocess.run([sys.executable, "-c", "import config; print(config.OUTPUT_DIR)"], cwd=ROOT, env=env,
+                                  capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("not-a-folder", done.stdout)
 
 
 if __name__ == "__main__":
