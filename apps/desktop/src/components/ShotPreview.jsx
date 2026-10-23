@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Pause, Play, RotateCcw } from "lucide-react";
 import { projectMediaUrl } from "../workflowData.js";
-import { enforcePreviewRange, previewRange } from "../editor/shotEditing.js";
+import { enforcePreviewRange, previewRange, isImageAsset } from "../editor/shotEditing.js";
 import { EditorButton } from "./EditorButton.jsx";
 import { subtitleAtTime } from "../editor/subtitleEditing.js";
 
@@ -54,7 +54,10 @@ export function ShotPreview({ backendUrl, projectId, asset, edit, aspectRatio, o
 
   return <div className="shot-preview">
     <div className="shot-preview-frame" ref={frameRef} style={{ aspectRatio: `${ratioWidth} / ${ratioHeight}` }}>
-      {source ? <video ref={videoRef} src={source} muted playsInline preload="metadata" aria-label="镜头选段预览"
+      {source && isImageAsset(asset) ? <img src={source} alt="图片素材预览"
+        style={{ objectFit: edit.fit, objectPosition: edit.fit === "contain" ? "50% 50%" : `${Number(edit.crop_x) * 100}% ${Number(edit.crop_y) * 100}%` }}
+        onError={() => setError("图片预览加载失败，请替换素材或检查路径。")} />
+      : source ? <video ref={videoRef} src={source} muted playsInline preload="metadata" aria-label="镜头选段预览"
         style={{ objectFit: edit.fit, objectPosition: edit.fit === "contain" ? "50% 50%" : `${Number(edit.crop_x) * 100}% ${Number(edit.crop_y) * 100}%` }}
         onLoadedMetadata={(event) => {
           const video = event.currentTarget;

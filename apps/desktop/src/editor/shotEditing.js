@@ -4,6 +4,8 @@ export const SUBTITLE_COLORS = ["#FFFFFF", "#FFE066", "#7DE2D1", "#FF8FAD", "#00
 export const narrationText = (shot) => String(shot?.tts_text || shot?.script_text || "").trim();
 export const positiveDuration = (value) => Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : null;
 const finite = (value) => value !== "" && value !== null && Number.isFinite(Number(value));
+const IMAGE_FILE = /\.(heic|heif|jpe?g|png|webp)$/i;
+export const isImageAsset = (asset) => asset?.metadata?.asset_type === "image" || IMAGE_FILE.test(String(asset?.file_path || ""));
 
 export function shotEdit(shot, aspectRatio) {
   const edit = shot?.metadata?.edit || {};
@@ -12,6 +14,7 @@ export function shotEdit(shot, aspectRatio) {
     shortage: "freeze", duration_mode: "narration", lead_in_seconds: 0, tail_out_seconds: 0, ...edit,
     ...(aspectRatio ? edit.framing?.[aspectRatio] : {}),
     transition: { kind: "cut", duration_seconds: 0.3, ...edit.transition },
+    motion: { kind: "push", zoom: 1.08, ...edit.motion },
     subtitle: {
       text: shot?.tts_text || shot?.script_text || "", position: "bottom",
       font_size: 48, color: "#FFFFFF", background: false, timing_mode: "full", cues: [], ...edit.subtitle,
@@ -35,6 +38,7 @@ export function editShotSettings(shots, id, change) {
   const edit = { ...previous, ...change };
   if (change.subtitle) edit.subtitle = { ...previous.subtitle, ...change.subtitle };
   if (change.transition) edit.transition = { ...previous.transition, ...change.transition };
+  if (change.motion) edit.motion = { ...previous.motion, ...change.motion };
   return updateShot(shots, id, { metadata: { edit } });
 }
 
@@ -89,13 +93,15 @@ export function voiceForShot(shot, shots, segments, savedShots = shots) {
 
 export function shotTiming(shot, asset, voice, measured = {}) {
   const edit = shotEdit(shot);
-  const mediaDuration = positiveDuration(measured.media) || positiveDuration(asset?.duration_seconds);
+  // A photo has no timeline of its own: it fills the whole shot, so it never runs short.
+  const still = isImageAsset(asset);
+  const mediaDuration = still ? null : positiveDuration(measured.media) || positiveDuration(asset?.duration_seconds);
   const voiceDuration = voice ? positiveDuration(measured.voice) || positiveDuration(voice.duration_seconds) : null;
   const required = Number(edit.lead_in_seconds) + (voiceDuration || 0) + Number(edit.tail_out_seconds);
   const target = edit.duration_mode === "narration" && voiceDuration ? required : Number(shot.duration_seconds);
   const end = edit.source_out === null ? mediaDuration : Number(edit.source_out);
   const available = end === null ? null : end - Number(edit.source_in);
-  return { mediaDuration, voiceDuration, target, required, available, shortage: available !== null && available + 0.001 < target };
+  return { mediaDuration, voiceDuration, target, required, available, still, shortage: available !== null && available + 0.001 < target };
 }
 
 export function shotErrors(shot, timing) {
@@ -112,6 +118,7 @@ export function shotErrors(shot, timing) {
       [framing.crop_x, framing.crop_y].some((value) => value !== undefined && (!finite(value) || Number(value) < 0 || Number(value) > 1))) errors.push("分画幅构图无效。");
   }
   if (!["cut", "fade_black"].includes(edit.transition.kind) || !finite(edit.transition.duration_seconds) || Number(edit.transition.duration_seconds) < 0.05 || Number(edit.transition.duration_seconds) > 1) errors.push("转场时长必须在 0.05 到 1 秒之间。");
+  if (!["push", "pull", "none"].includes(edit.motion.kind) || !finite(edit.motion.zoom) || Number(edit.motion.zoom) < 1.01 || Number(edit.motion.zoom) > 1.5) errors.push("推拉幅度必须在 1.01 到 1.5 倍之间。");
   if (!["freeze", "error"].includes(edit.shortage)) errors.push("请选择短片处理方式。");
   if (!["narration", "manual"].includes(edit.duration_mode)) errors.push("请选择目标时长模式。");
   if (edit.duration_mode === "manual" && timing.voiceDuration && timing.target + 0.001 < timing.voiceDuration) errors.push("目标视频时长不能短于实际配音。");
@@ -156,6 +163,7 @@ export function serializeShots(shots) {
       ...framing, ...Object.fromEntries(["crop_x", "crop_y"].filter((key) => framing[key] !== undefined).map((key) => [key, Number(framing[key])])),
     }]));
     if (edit.transition?.duration_seconds !== undefined) edit.transition = { ...edit.transition, duration_seconds: Number(edit.transition.duration_seconds) };
+    if (edit.motion?.zoom !== undefined) edit.motion = { ...edit.motion, zoom: Number(edit.motion.zoom) };
     return { ...result, metadata: { ...shot.metadata, edit } };
   });
 }

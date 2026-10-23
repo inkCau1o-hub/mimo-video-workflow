@@ -992,7 +992,7 @@ details summary { cursor: pointer; font-size: 13px; margin-bottom: 10px; }
 .shot-visual-column audio { width: 100%; height: 34px; }
 .shot-preview { display: grid; gap: 8px; }
 .shot-preview-frame { position: relative; background: #101214; width: 100%; overflow: hidden; }
-.shot-preview-frame video { position: absolute; inset: 0; width: 100%; height: 100%; }
+.shot-preview-frame video, .shot-preview-frame img { position: absolute; inset: 0; width: 100%; height: 100%; }
 .preview-placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: #c4ccd0; font-size: 12px; padding: 12px; }
 .preview-transport { display: grid; grid-template-columns: 34px 34px minmax(0, 1fr); gap: 6px; align-items: center; }
 .preview-transport output { text-align: right; font-size: 11px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }

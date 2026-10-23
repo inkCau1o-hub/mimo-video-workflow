@@ -44,7 +44,8 @@ export function ShotInspector({ shot, asset, assets, voice, timing, errors, back
       {timing.shortage ? <p className={edit.shortage === "error" ? "error-text" : "editor-warning"} role="status">
         {edit.shortage === "freeze" ? `选段不足，导出时补末帧 ${(timing.target - timing.available).toFixed(2)} s；配音完整保留。` : "选段不足：当前选择将拒绝导出，请延长选段或选择补末帧。"}
       </p> : null}
-      {!timing.mediaDuration ? <p className="muted">{asset ? "素材时长待校验。" : "自动匹配后需校验素材与选段时长。"}</p> : null}
+      {timing.still ? <p className="muted">图片素材：按镜头时长显示，并做推拉。</p>
+        : !timing.mediaDuration ? <p className="muted">{asset ? "素材时长待校验。" : "自动匹配后需校验素材与选段时长。"}</p> : null}
       {errors.length ? <ul className="editor-errors" role="alert">{errors.map((error) => <li key={error}>{error}</li>)}</ul> : null}
     </div>
     <div className="shot-parameter-column">
@@ -92,6 +93,10 @@ export function ShotInspector({ shot, asset, assets, voice, timing, errors, back
         <label className="full-label">到下一镜头<select disabled={!hasNext} value={edit.transition.kind} onChange={(event) => onSettings({ transition: { kind: event.target.value } })}><option value="cut">直接切换</option><option value="fade_black">淡黑转场</option></select></label>
         <label className="full-label">单侧淡化（秒）<input type="number" min="0.05" max="1" step="0.05" value={edit.transition.duration_seconds} disabled={!hasNext || edit.transition.kind === "cut"} onChange={(event) => onSettings({ transition: { duration_seconds: event.target.value } })} /></label>
       </div>
+      {timing.still ? <div className="editor-field-row">
+        <label className="full-label">图片运动<select value={edit.motion.kind} onChange={(event) => onSettings({ motion: { kind: event.target.value } })}><option value="push">推近</option><option value="pull">拉远</option><option value="none">静止</option></select></label>
+        <label className="full-label">推拉幅度（倍）<input type="number" min="1.01" max="1.5" step="0.01" value={edit.motion.zoom} disabled={edit.motion.kind === "none"} onChange={(event) => onSettings({ motion: { zoom: event.target.value } })} /></label>
+      </div> : null}
       <label className="full-label">{edit.subtitle.timing_mode === "cues" ? "分句底稿" : "字幕正文"}<textarea className="mini-textarea" value={edit.subtitle.text} onChange={(event) => onSettings({ subtitle: { text: event.target.value } })} /></label>
       <SubtitleTiming edit={edit} timing={timing} onSettings={onSettings} onPlayCue={playCue} hasVoice={Boolean(voice)} disabled={disabled} />
       <div className="editor-field-row">

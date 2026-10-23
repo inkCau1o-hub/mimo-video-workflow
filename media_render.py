@@ -19,7 +19,7 @@ from urllib.parse import unquote, urlsplit
 
 from audio_mix import validate_audio_settings, voice_processing, assembly_audio_filters
 from shot_timing import normalize_timing, shot_duration, subtitle_events
-from visual_edit import validate_visual_edit, resolve_framing, transition_windows
+from visual_edit import image_motion, validate_visual_edit, resolve_framing, transition_windows
 
 
 class RenderError(RuntimeError):
@@ -347,6 +347,21 @@ def _select_ffmpeg(runner, requested, needs_subtitles, cwd):
     raise RenderError("missing_subtitle_filter", "Chinese subtitles require FFmpeg with the libass ass filter.")
 
 
+_STILL_FORMATS = {"image2", "jpeg_pipe", "png_pipe", "webp_pipe"}
+
+
+def _is_still(info):
+    return bool(set(info.get("format", {}).get("format_name", "").split(",")) & _STILL_FORMATS)
+
+
+def _zoompan(motion, duration, fps, width, height):
+    frames = max(1, round(duration * fps))
+    zoom, step = motion["zoom"], max(frames - 1, 1)
+    scale = {"push": f"1+{zoom - 1:.6f}*on/{step}", "pull": f"{zoom:.6f}-{zoom - 1:.6f}*on/{step}", "none": "1"}
+    return (f"zoompan=z='{scale[motion['kind']]}':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2'"
+            f":d={frames}:s={width}x{height}:fps={fps}")
+
+
 def _stream_duration(data, kind):
     stream = next((s for s in data["streams"] if s.get("codec_type") == kind), None)
     if not stream:
@@ -548,6 +563,10 @@ def _render(plan, output_path, *, ffmpeg_path, overwrite, include_voiceover,
                 path = clip["path"]
                 if path not in cache:
                     cache[path] = _probe(runner, ffprobe, path, work)
+                if kind == "video" and _is_still(cache[path]):
+                    # A photo has no timeline of its own; its push/pull fills the whole shot.
+                    clip.update(still=True, start=0.0, available=math.inf)
+                    continue
                 measured = _stream_duration(cache[path], kind)
                 start = _number(clip.get("source_in"))
                 if measured <= 0:
@@ -603,7 +622,8 @@ def _render(plan, output_path, *, ffmpeg_path, overwrite, include_voiceover,
             video, audio, duration = row["video"], row["audio"], row["duration"]
             argv = [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
                     "-threads", "2", "-filter_threads", "2", "-protocol_whitelist", "file,pipe",
-                    "-ss", str(video["start"]), "-i", str(video["path"])]
+                    # Seeking into a photo can drop its only frame.
+                    *([] if video.get("still") else ["-ss", str(video["start"])]), "-i", str(video["path"])]
             if audio:
                 argv += ["-protocol_whitelist", "file,pipe", "-ss", str(audio["start"]), "-i", str(audio["path"])]
             else:
@@ -613,16 +633,20 @@ def _render(plan, output_path, *, ffmpeg_path, overwrite, include_voiceover,
             if visual_duration:
                 filters.append(f"trim=duration={min(visual_duration, duration):.9f}")
             filters.append("setpts=PTS-STARTPTS")
+            # Photos are framed at 4x and zoomed down to size, so the push/pull moves without jitter.
+            box_w, box_h = (width * 4, height * 4) if video.get("still") else (width, height)
             if video.get("fit", "cover") in ("contain", "fit"):
-                filters += [f"scale={width}:{height}:force_original_aspect_ratio=decrease:force_divisible_by=2",
-                            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black"]
+                filters += [f"scale={box_w}:{box_h}:force_original_aspect_ratio=decrease:force_divisible_by=2",
+                            f"pad={box_w}:{box_h}:(ow-iw)/2:(oh-ih)/2:color=black"]
             else:
                 crop_x = _number(video.get("crop_x"), .5)
                 crop_y = _number(video.get("crop_y"), .5)
                 if crop_x > 1 or crop_y > 1:
                     raise RenderError("invalid_plan", "Crop coordinates must be between zero and one.")
-                filters += [f"scale={width}:{height}:force_original_aspect_ratio=increase:force_divisible_by=2",
-                            f"crop={width}:{height}:(iw-ow)*{crop_x:.9f}:(ih-oh)*{crop_y:.9f}"]
+                filters += [f"scale={box_w}:{box_h}:force_original_aspect_ratio=increase:force_divisible_by=2",
+                            f"crop={box_w}:{box_h}:(iw-ow)*{crop_x:.9f}:(ih-oh)*{crop_y:.9f}"]
+            if video.get("still"):
+                filters.append(_zoompan(image_motion(row["edit"]), duration, fps, width, height))
             filters += ["setsar=1", f"fps={fps}", f"tpad=stop_mode=clone:stop_duration={duration:.9f}",
                         f"trim=duration={duration:.9f}", "setpts=PTS-STARTPTS"]
             if subtitles and row["subtitle_events"]:

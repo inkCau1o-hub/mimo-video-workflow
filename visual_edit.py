@@ -4,6 +4,9 @@ from collections.abc import Mapping
 from copy import deepcopy
 import math
 
+MOTIONS = ("push", "pull", "none")
+DEFAULT_MOTION = {"kind": "push", "zoom": 1.08}
+
 
 def _number(value, name, low, high):
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not low <= value <= high:
@@ -33,7 +36,20 @@ def validate_visual_edit(edit):
             raise ValueError("转场仅支持直接切换或淡黑切换。")
         if "duration_seconds" in transition:
             _number(transition["duration_seconds"], "单侧淡变时长", .05, 1)
+    if "motion" in result:
+        motion = result["motion"]
+        if not isinstance(motion, Mapping) or set(motion) - {"kind", "zoom"}:
+            raise ValueError("图片运动设置无效。")
+        if motion.get("kind", "push") not in MOTIONS:
+            raise ValueError("图片运动仅支持推近、拉远或静止。")
+        if "zoom" in motion:
+            _number(motion["zoom"], "推拉幅度", 1.01, 1.5)
     return result
+
+
+def image_motion(edit):
+    """Push or pull for a still photo; photos without a setting push in gently."""
+    return {**DEFAULT_MOTION, **((edit or {}).get("motion") or {})}
 
 
 def resolve_framing(edit, ratio=None):
