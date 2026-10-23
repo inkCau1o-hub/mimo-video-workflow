@@ -166,6 +166,32 @@ TTS_VOICE = (
     or DEFAULT_TTS_VOICE
 )
 
+def _first(*values):
+    return next((str(value).strip() for value in values if value and str(value).strip()), "")
+
+
+def shared_model_settings(env=None, user_config=None):
+    """Model settings handed to sibling modules (AI 动画) when the launcher starts them.
+
+    Re-read on every call with the same precedence as the module constants above, so a
+    key changed in the config file reaches the next start without restarting MiMo.
+    Returned as environment variables; empty values are left out.
+    """
+    env = os.environ if env is None else env
+    data = load_user_config() if user_config is None else user_config
+    values = {
+        "MIMO_API_KEY": _first(env.get("API_KEY"), env.get("OPENAI_API_KEY"), env.get("MIMO_API_KEY"),
+                               env.get("DEEPSEEK_API_KEY"), data.get("api_key"), data.get("deepseek_api_key")),
+        "MIMO_BASE_URL": _first(env.get("API_BASE_URL"), env.get("OPENAI_BASE_URL"), env.get("MIMO_BASE_URL"),
+                                data.get("api_base_url"), DEFAULT_API_BASE_URL),
+        "MIMO_MODEL": _first(env.get("API_MODEL"), env.get("OPENAI_MODEL"), env.get("MIMO_MODEL"),
+                             data.get("api_model"), DEFAULT_API_MODEL),
+        "MIMO_VISION_MODEL": _first(env.get("VISION_API_MODEL"), env.get("MIMO_VISION_MODEL"),
+                                    data.get("vision_api_model"), DEFAULT_VISION_API_MODEL),
+    }
+    return {name: value for name, value in values.items() if value}
+
+
 # Backward-compatible names for older modules and configs.
 DEEPSEEK_API_KEY = API_KEY
 DEEPSEEK_API_URL = API_URL

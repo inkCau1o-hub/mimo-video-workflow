@@ -151,8 +151,8 @@ class WorkflowRequestHandler(BaseHTTPRequestHandler):
         if method == "GET" and parts == ["modules"]:
             return HTTPStatus.OK, self.server.modules.describe()
 
-        if method == "POST" and len(parts) == 3 and parts[0] == "modules" and parts[2] in {"start", "stop"}:
-            action = self.server.modules.start if parts[2] == "start" else self.server.modules.stop
+        if method == "POST" and len(parts) == 3 and parts[0] == "modules" and parts[2] in {"start", "stop", "restart"}:
+            action = getattr(self.server.modules, parts[2])
             return HTTPStatus.OK, {"module": action(parts[1])}
 
         if method == "GET" and parts == ["projects"]:

@@ -35,8 +35,26 @@ export function AnimationModule({ api, modules, onModules }) {
       .catch((error) => setRequestError(error.message || String(error)));
   };
 
+  const restart = () => {
+    setRequestError("");
+    api.post("/modules/animation/restart")
+      .then(() => api.get("/modules"))
+      .then((data) => onModules(data.modules))
+      .catch((error) => setRequestError(error.message || String(error)));
+  };
+
   if (view.ready) {
-    return <iframe className="module-frame" title="AI 动画" src={record.url} />;
+    return (
+      <>
+        {record.restart_required ? (
+          <div className="module-notice" role="status">
+            <span>模型设置已更改，重启 AI 动画后生效。</span>
+            <button type="button" onClick={restart}>重启 AI 动画</button>
+          </div>
+        ) : null}
+        <iframe className="module-frame" title="AI 动画" src={record.url} />
+      </>
+    );
   }
   const message = requestError || view.message;
   return (

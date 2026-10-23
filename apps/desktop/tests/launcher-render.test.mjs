@@ -55,4 +55,11 @@ test("animation module shows progress, failure details, then embeds the workbenc
     api, onModules() {}, modules: [feed, { id: "animation", available: true, status: "running", url: "http://127.0.0.1:5174/" }],
   });
   assert.match(ready, /<iframe[^>]*src="http:\/\/127\.0\.0\.1:5174\/"/);
+  assert.doesNotMatch(ready, /重启 AI 动画/);
+  const stale = render("AnimationModule", {
+    api, onModules() {},
+    modules: [feed, { id: "animation", available: true, status: "running", url: "http://127.0.0.1:5174/", restart_required: true }],
+  });
+  assert.match(stale, /模型设置已更改/);
+  assert.match(stale, /<iframe/);
 });

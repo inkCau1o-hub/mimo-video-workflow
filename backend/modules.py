@@ -12,6 +12,7 @@ their business APIs, so the two features stay independent.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -108,6 +109,7 @@ class ModuleProcess:
     process: Optional[subprocess.Popen] = None
     started_at: float = 0.0
     log_path: Optional[Path] = None
+    settings_hash: str = ""
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     @property
@@ -128,11 +130,15 @@ class ModuleManager:
         env: Optional[Dict[str, str]] = None,
         health_timeout: float = 90.0,
         probe: Optional[Callable[[str], bool]] = None,
+        settings: Optional[Callable[[], Dict[str, str]]] = None,
     ):
         self.env = dict(os.environ if env is None else env)
         self.log_dir = Path(log_dir) if log_dir else REPO_ROOT / "output" / "logs"
         self.health_timeout = float(health_timeout)
         self.probe = probe or _http_ok
+        # Shared model settings (key, base URL, models) are configured once in MiMo and
+        # passed to the module as environment variables; they never reach a browser or log.
+        self.settings = settings or _shared_model_settings
         self.animation = self._discover_animation()
 
     # ---- discovery -------------------------------------------------------------
@@ -184,7 +190,8 @@ class ModuleManager:
                 return self._describe(module)
             self.log_dir.mkdir(parents=True, exist_ok=True)
             module.log_path = self.log_dir / f"{module.module_id}.log"
-            env = {**self.env, module.manifest["port_env"]: str(module.port)}
+            shared = self.settings()
+            env = {**self.env, **shared, module.manifest["port_env"]: str(module.port)}
             env["PATH"] = os.pathsep.join([env.get("PATH", ""), *map(str, _EXTRA_BIN_DIRS)])
             command = [find_executable(module.manifest["command"][0]) or module.manifest["command"][0],
                        *module.manifest["command"][1:]]
@@ -200,6 +207,7 @@ class ModuleManager:
             finally:
                 log.close()
             module.status, module.error, module.started_at = STATUS_STARTING, "", time.time()
+            module.settings_hash = _settings_hash(shared)
         threading.Thread(target=self._wait_healthy, args=(module,), daemon=True).start()
         return self._describe(module)
 
@@ -210,6 +218,10 @@ class ModuleManager:
             module.process = None
             module.status = STATUS_STOPPED
         return self._describe(module)
+
+    def restart(self, module_id: str) -> Dict[str, Any]:
+        self.stop(module_id)
+        return self.start(module_id)
 
     def shutdown(self) -> None:
         try:
@@ -265,7 +277,28 @@ class ModuleManager:
             "error": module.error,
             "url": module.url if module.status == STATUS_RUNNING else "",
             "log_path": str(module.log_path) if module.log_path else "",
+            "restart_required": self._restart_required(module),
         }
+
+    def _restart_required(self, module: ModuleProcess) -> bool:
+        """True when the shared settings changed after this module was started by us."""
+        if module.status != STATUS_RUNNING or module.process is None or not module.settings_hash:
+            return False
+        try:
+            return _settings_hash(self.settings()) != module.settings_hash
+        except Exception:  # noqa: BLE001 - a broken config file must not break the status page
+            return False
+
+
+def _shared_model_settings() -> Dict[str, str]:
+    import config  # imported lazily: tests and tools can use this module without MiMo config
+
+    return config.shared_model_settings()
+
+
+def _settings_hash(values: Dict[str, str]) -> str:
+    payload = json.dumps(sorted(values.items()), ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _http_ok(url: str) -> bool:

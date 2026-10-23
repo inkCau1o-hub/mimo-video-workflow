@@ -27,6 +27,7 @@ SERVER = textwrap.dedent(
     # A grandchild that must die with the module.
     child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(600)"])
     open("child.pid", "w").write(str(child.pid))
+    open("seen_key.txt", "w").write(os.environ.get("MIMO_API_KEY", ""))
     port = int(os.environ["PORT"])
     http.server.ThreadingHTTPServer(("127.0.0.1", port), http.server.SimpleHTTPRequestHandler).serve_forever()
     """
@@ -71,6 +72,7 @@ class ModuleManagerTest(unittest.TestCase):
         (self.dir / "launcher.json").write_text(json.dumps(data or self.manifest), encoding="utf-8")
 
     def manager(self, **kwargs):
+        kwargs.setdefault("settings", lambda: {})
         return ModuleManager(log_dir=Path(self.tmp.name) / "logs", env=kwargs.pop("env", self.env), **kwargs)
 
     def wait_for(self, manager, status, timeout=15):
@@ -129,6 +131,26 @@ class ModuleManagerTest(unittest.TestCase):
             time.sleep(0.1)
         self.assertFalse(alive(child_pid), "grandchild survived stop()")
         self.assertIsNotNone(leader.poll())
+
+    def test_shared_settings_reach_the_module_but_never_the_status_or_log(self):
+        settings = {"MIMO_API_KEY": "sk-shared-123456", "MIMO_MODEL": "mimo-v2.5-pro"}
+        manager = self.manager(settings=lambda: dict(settings))
+        manager.start("animation")
+        item = self.wait_for(manager, "running")
+        try:
+            self.assertEqual((self.dir / "seen_key.txt").read_text(), "sk-shared-123456")
+            self.assertFalse(item["restart_required"])
+            self.assertNotIn("sk-shared-123456", json.dumps(manager.describe(), ensure_ascii=False))
+            settings["MIMO_API_KEY"] = "sk-rotated-654321"
+            self.assertTrue(manager.describe()["modules"][1]["restart_required"])
+            manager.restart("animation")
+            self.wait_for(manager, "running")
+            self.assertEqual((self.dir / "seen_key.txt").read_text(), "sk-rotated-654321")
+            self.assertFalse(manager.describe()["modules"][1]["restart_required"])
+        finally:
+            manager.shutdown()
+        log = Path(manager.animation.log_path).read_text(encoding="utf-8", errors="replace")
+        self.assertNotIn("sk-", log)
 
     def test_crash_is_reported_as_failed_with_log(self):
         manager = self.manager(env={**self.env, "CRASH": "1"})

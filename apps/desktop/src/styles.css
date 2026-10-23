@@ -1148,6 +1148,11 @@ details summary { cursor: pointer; font-size: 13px; margin-bottom: 10px; }
 .module-home { margin-right: 6px; }
 .module-tab.active { background: #20242a; border-color: #20242a; color: #ffffff; }
 .module-frame { flex: 1; width: 100%; min-height: calc(100vh - 45px); border: 0; background: #ffffff; }
+.module-notice {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 8px 12px; border-bottom: 1px solid #ecd9a4; background: #fff7e0; color: #5a4a1a; font-size: 13px;
+}
+.module-notice button { min-height: 28px; padding: 3px 10px; }
 .module-placeholder { margin: 48px auto; max-width: 640px; padding: 0 16px; display: grid; gap: 12px; }
 .module-placeholder h2 { margin: 0; font-size: 18px; }
 .module-message { color: #69717d; font-size: 13px; }
