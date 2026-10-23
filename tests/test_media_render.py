@@ -307,6 +307,14 @@ class PlannerContractTests(unittest.TestCase):
                 media_render._select_ffmpeg(runner, "bundled", True, ROOT)
         self.assertEqual(caught.exception.code, "missing_subtitle_filter")
 
+    def test_bundled_ffmpeg_is_the_last_subtitle_fallback(self):
+        runner = media_render._Runner(None, None, 10)
+        with patch("media_render.discover_executable", return_value="system"), \
+             patch("media_render._bundled_ffmpeg", return_value="imageio"), \
+             patch.object(runner, "run", side_effect=[b"no subtitles", b" ... ass V->V Render subtitles\n"]):
+            self.assertEqual(media_render._select_ffmpeg(runner, None, True, ROOT), "imageio")
+            self.assertEqual(media_render._select_ffmpeg(runner, None, False, ROOT), "system")
+
 
 class RealRenderTests(unittest.TestCase):
     @classmethod

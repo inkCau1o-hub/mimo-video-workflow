@@ -309,6 +309,16 @@ def _probe(runner, executable, path, cwd):
         raise RenderError("invalid_media", "A media file has no readable streams.") from None
 
 
+def _bundled_ffmpeg():
+    # imageio-ffmpeg's build ships libass; Homebrew's default ffmpeg no longer does.
+    try:
+        import imageio_ffmpeg
+
+        return str(Path(imageio_ffmpeg.get_ffmpeg_exe()).resolve())
+    except Exception:
+        return None
+
+
 def _select_ffmpeg(runner, requested, needs_subtitles, cwd):
     candidates = []
     for preferred in (None, requested):
@@ -322,6 +332,9 @@ def _select_ffmpeg(runner, requested, needs_subtitles, cwd):
         raise RenderError("missing_tool", "FFmpeg must be installed for real rendering.")
     if not needs_subtitles:
         return candidates[0]
+    bundled = _bundled_ffmpeg()
+    if bundled and bundled not in candidates:
+        candidates.append(bundled)
     for candidate in candidates:
         try:
             filters = runner.run([candidate, "-hide_banner", "-filters"], cwd, "subtitle capability check")
