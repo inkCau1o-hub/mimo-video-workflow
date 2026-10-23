@@ -56,7 +56,6 @@ apps/desktop/dist/
 # Client material, samples and test projects never enter the repository
 samples/
 projects/
-modules/
 .venv_失效_*/
 *.heic
 *.HEIC

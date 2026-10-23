@@ -145,7 +145,11 @@ npm run dev          # http://127.0.0.1:5173 ，后端默认 http://127.0.0.1:87
 
 打开后先到首页，可选「信息流剪辑」或「AI 动画」，顶栏随时切换，两边项目和数据互不相通。`?module=feed|animation|home` 可直接打开指定功能，默认回到上次使用的功能。
 
-AI 动画是独立仓库，默认在本仓库旁边的 `../ai-animation` 或 `modules/ai-animation` 查找，也可以用环境变量 `MIMO_AI_ANIMATION_DIR` 指定，端口用 `MIMO_AI_ANIMATION_PORT`（默认读取它的 `launcher.json`）。后端在第一次进入 AI 动画时按 `launcher.json` 启动它的服务（`GET /modules`、`POST /modules/animation/start|stop`），退出时连同子进程一起关闭；目录或依赖缺失时首页对应卡片显示原因，信息流剪辑照常可用。
+AI 动画是独立的私有仓库，以 git 子模块挂在 `modules/ai-animation`：有访问权限时 `git clone --recursive` 一次拿到两边，安装环境脚本也会自动取出子模块。查找顺序是环境变量 `MIMO_AI_ANIMATION_DIR`、已取出的 `modules/ai-animation`、本仓库旁边的 `../ai-animation`（自己开发 AI 动画时用这份工作副本，安装脚本此时不再取子模块）。端口用 `MIMO_AI_ANIMATION_PORT`，默认读取它的 `launcher.json`。
+
+后端在第一次进入 AI 动画时按 `launcher.json` 启动它的服务（`GET /modules`、`POST /modules/animation/start|stop|restart`），退出时连同子进程一起关闭；目录或依赖缺失时首页对应卡片显示原因，信息流剪辑照常可用。
+
+模型密钥只在 MiMo 配一次：每次启动 AI 动画时，后端重新读取 MiMo 的设置（环境变量优先，其次配置文件），以 `MIMO_API_KEY`、`MIMO_BASE_URL`、`MIMO_MODEL`、`MIMO_VISION_MODEL` 环境变量传给它；不经过前端、不写进状态接口和日志。设置改了之后，AI 动画页面顶部会提示「重启 AI 动画后生效」。
 
 **macOS 开发壳**
 

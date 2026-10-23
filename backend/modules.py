@@ -56,6 +56,12 @@ def animation_candidates(env: Optional[Dict[str, str]] = None) -> List[Path]:
     return [REPO_ROOT / "modules" / "ai-animation", REPO_ROOT.parent / "ai-animation"]
 
 
+def pick_animation_dir(candidates: List[Path]) -> Optional[Path]:
+    """First candidate with a manifest; an uninitialised git submodule is an empty folder."""
+    found = next((path for path in candidates if (path / MANIFEST_NAME).is_file()), None)
+    return found or next((path for path in candidates if path.is_dir()), None)
+
+
 def load_manifest(directory: Path) -> Dict[str, Any]:
     path = directory / MANIFEST_NAME
     try:
@@ -145,7 +151,7 @@ class ModuleManager:
     def _discover_animation(self) -> ModuleProcess:
         module = ModuleProcess("animation", "AI 动画")
         candidates = animation_candidates(self.env)
-        directory = next((path for path in candidates if path.is_dir()), None)
+        directory = pick_animation_dir(candidates)
         if directory is None:
             module.reason = "未找到 AI 动画目录：" + "、".join(str(path) for path in candidates)
             return module

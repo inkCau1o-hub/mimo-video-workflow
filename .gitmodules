@@ -1,0 +1,3 @@
+[submodule "modules/ai-animation"]
+	path = modules/ai-animation
+	url = https://github.com/inkCau1o-hub/ai-animation.git

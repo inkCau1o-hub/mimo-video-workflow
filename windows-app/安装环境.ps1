@@ -73,6 +73,12 @@ try {
     } else { Write-Host 'Frontend dependency checks/install skipped by request.' }
     Write-Step 'AI animation module (optional)'
     $animationDir = $env:MIMO_AI_ANIMATION_DIR
+    $siblingManifest = Join-Path (Join-Path (Split-Path -Parent $root) 'ai-animation') 'launcher.json'
+    if (-not $animationDir -and -not (Test-Path -LiteralPath $siblingManifest) -and (Test-Path -LiteralPath (Join-Path $root '.gitmodules')) -and (Get-Command git -ErrorAction SilentlyContinue)) {
+        # Private repository: fetching the submodule needs access to it; failure only skips AI animation.
+        & git -C $root submodule update --init 'modules/ai-animation'
+        if ($LASTEXITCODE -ne 0) { Write-Warning 'Could not fetch the AI animation submodule (no access to the private repository?). Skipping.' }
+    }
     if (-not $animationDir) {
         foreach ($candidate in @((Join-Path $root 'modules\ai-animation'), (Join-Path (Split-Path -Parent $root) 'ai-animation'))) {
             if (Test-Path -LiteralPath (Join-Path $candidate 'launcher.json')) { $animationDir = $candidate; break }

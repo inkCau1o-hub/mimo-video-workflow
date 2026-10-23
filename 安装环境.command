@@ -53,6 +53,13 @@ npm install
 echo
 echo "== AI 动画（可选）=="
 ANIMATION_DIR="${MIMO_AI_ANIMATION_DIR:-}"
+# 同级目录已有 AI 动画工作副本时直接用它；否则取出仓库里的子模块（私有仓库，需要有访问权限）。
+if [ -z "$ANIMATION_DIR" ] && [ ! -f "$ROOT_DIR/../ai-animation/launcher.json" ] \
+   && [ -f "$ROOT_DIR/.gitmodules" ] && command -v git >/dev/null 2>&1; then
+  if ! (cd "$ROOT_DIR" && git submodule update --init modules/ai-animation); then
+    echo "警告：无法取得 AI 动画子模块（可能没有该私有仓库的权限），跳过。"
+  fi
+fi
 if [ -z "$ANIMATION_DIR" ]; then
   for candidate in "$ROOT_DIR/modules/ai-animation" "$ROOT_DIR/../ai-animation"; do
     if [ -f "$candidate/launcher.json" ]; then ANIMATION_DIR="$candidate"; break; fi

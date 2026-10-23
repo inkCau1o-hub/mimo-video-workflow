@@ -17,6 +17,7 @@ from backend.modules import (  # noqa: E402
     ModuleError,
     ModuleManager,
     load_manifest,
+    pick_animation_dir,
 )
 
 SERVER = textwrap.dedent(
@@ -92,6 +93,13 @@ class ModuleManagerTest(unittest.TestCase):
         self.assertIn("未找到 AI 动画目录", modules[1]["reason"])
         with self.assertRaises(ModuleError):
             self.manager(env=env).start("animation")
+
+    def test_empty_submodule_folder_falls_back_to_the_sibling_checkout(self):
+        empty = Path(self.tmp.name) / "modules" / "ai-animation"
+        empty.mkdir(parents=True)
+        self.assertEqual(pick_animation_dir([empty, self.dir]), self.dir)
+        self.assertEqual(pick_animation_dir([empty]), empty)  # still reported, as missing launcher.json
+        self.assertIsNone(pick_animation_dir([Path(self.tmp.name) / "nowhere"]))
 
     def test_manifest_validation(self):
         for bad in ({"command": []}, {"command": "node x"}, {"command": ["node"], "default_port": 0},
