@@ -13,6 +13,7 @@ from material_catalog import MaterialCatalog
 from media_assembler import AssemblyPlanner, FFmpegAssemblyRenderer, schema_object_or_dict
 from multimodal_interfaces import FFMPEG_PATH
 from production_schema import (
+    NARRATION_MODES,
     AssemblyPlan,
     MaterialAsset,
     ProductionProject,
@@ -274,6 +275,16 @@ class WorkflowState:
             self._invalidate(activity, "materials")
         activity.metadata["material_paths"] = normalized
         self._changed(activity)
+        return activity
+
+    def set_narration_mode(self, mode: str, *, activity_id: Optional[str] = None) -> WorkflowActivity:
+        if mode not in NARRATION_MODES:
+            raise ValueError("旁白模式只能是 voiceover（使用配音）或 none（无旁白）。")
+        activity = self._target_activity(activity_id)
+        if activity.narration_mode != mode:
+            activity.narration_mode = mode
+            self._invalidate(activity, "narration")
+            self._changed(activity)
         return activity
 
     def set_voiceover_segments(self, segments: Iterable[Any], *, activity_id: Optional[str] = None) -> List[VoiceoverSegment]:
@@ -596,6 +607,8 @@ class WorkflowState:
         **kwargs: Any,
     ) -> AssemblyPlan:
         analysis = self._require_storyboard_analysis()
+        # Without narration the storyboard's own shot durations set the timing, not stale voiceover.
+        include_voiceover = include_voiceover and self.current_activity.narration_mode != "none"
         output = Path(output_path).expanduser() if output_path else self.activity_dir / "final_video.mp4"
         planning_worker = planner or self.assembly_planner or AssemblyPlanner()
         rendering_worker = renderer or self.assembly_renderer or FFmpegAssemblyRenderer(ffmpeg_path=FFMPEG_PATH)
@@ -605,7 +618,7 @@ class WorkflowState:
             ("create_plan", "build_plan"),
             analysis,
             self.material_assets,
-            self.voiceover_segments,
+            self.voiceover_segments if include_voiceover else [],
             output_path=str(output),
             as_schema=True,
             **kwargs,
@@ -955,7 +968,9 @@ def _activity_status(activity: Optional[WorkflowActivity] = None) -> Dict[str, s
     elif isinstance(activity.transcript, Mapping):
         reference_text = str(activity.transcript.get("text") or "")
     voiceover_status = "pending"
-    if activity.voiceover_segments:
+    if activity.narration_mode == "none":
+        voiceover_status = "skipped"
+    elif activity.voiceover_segments:
         voiced = {segment.shot_id for segment in activity.voiceover_segments if segment.audio_path}
         required = {shot.shot_id or f"S{index:02d}" for index, shot in enumerate(activity.storyboard_analysis.shots if activity.storyboard_analysis else [], start=1)}
         voiceover_status = "ready" if voiced and required.issubset(voiced) else "partial"

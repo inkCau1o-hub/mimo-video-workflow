@@ -95,6 +95,7 @@ export default function App() {
       coverJob={latestJob("covers.render")} onGenerateCover={controller.generateCover}
       onCancelJob={controller.cancelJob}
       onSaveAudioSettings={controller.saveAudioSettings} onUploadMusic={controller.uploadMusic}
+      onSetNarrationMode={controller.setNarrationMode}
       busy={Boolean(pending) || jobs.some((item) => !isTerminalJob(item))}
       onBuildAssemblyPlan={(outputPath) => submitProjectJob("/assembly/plan", { output_path: outputPath }, "生成合成计划")}
       onRenderVideo={(payload) => submitProjectJob("/assembly/render", payload, "导出视频")}

@@ -54,7 +54,8 @@ export function ActivityBar({ project, activity, busy, onCreateActivity, onSelec
       </div>
       <div className="activity-steps">
         {steps.map(([key, label]) => (
-          <span className={status[key] === "ready" ? "step-pill ready" : "step-pill"} key={key}>
+          <span className={["ready", "skipped"].includes(status[key]) ? "step-pill ready" : "step-pill"} key={key}
+            title={status[key] === "skipped" ? "无旁白，不需要配音" : undefined}>
             {label}
           </span>
         ))}

@@ -299,6 +299,9 @@ export class WorkflowController {
     return this.save("/audio/settings", { audio_settings: audioSettings, base_revision: baseRevision }, "保存声音设置");
   };
 
+  setNarrationMode = (narration_mode) => this.runAction("切换旁白模式", (scope) => this.api.patch(
+    `/projects/${encodeURIComponent(scope.projectId)}/activities/${encodeURIComponent(scope.activityId)}`, { narration_mode }));
+
   uploadMusic = (file, { expectedScope } = {}) => {
     if (!this.matchesEditorScope(expectedScope)) return Promise.resolve(null);
     return this.runAction("导入背景音乐", async (scope) => {

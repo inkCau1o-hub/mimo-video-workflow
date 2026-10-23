@@ -174,6 +174,9 @@ class WorkflowBackend:
         activity = state.get_activity(activity_id)
         if activity is None:
             raise KeyError(f"activity not found: {activity_id}")
+        if "narration_mode" in payload:
+            self._require_idle_audio(state)
+            state.set_narration_mode(str(payload["narration_mode"]), activity_id=activity.activity_id)
         name = str(payload.get("name") or "").strip()
         if name:
             activity.name = name
@@ -752,7 +755,8 @@ class WorkflowBackend:
                 raise ValueError("请先生成或保存分镜。")
             if not state.material_assets:
                 raise ValueError("请先导入并分析素材。")
-            include_voiceover = bool(payload.get("include_voiceover", True))
+            include_voiceover = (state.current_activity.narration_mode != "none"
+                                 and bool(payload.get("include_voiceover", True)))
             if include_voiceover:
                 voiced = {segment.shot_id for segment in state.voiceover_segments if segment.audio_path}
                 missing = [shot.shot_id for shot in analysis.shots if shot.shot_id not in voiced]

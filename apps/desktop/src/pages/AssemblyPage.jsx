@@ -19,7 +19,7 @@ function indexBy(items, key) {
 }
 
 export function AssemblyPage({ activity, project, backendUrl, job, renderJob, onBuildAssemblyPlan, onRenderVideo, onCancelJob,
-  onSaveAudioSettings, onUploadMusic, onGenerateCover, coverJob, busy = false }) {
+  onSaveAudioSettings, onUploadMusic, onGenerateCover, onSetNarrationMode, coverJob, busy = false }) {
   const [outputPath, setOutputPath] = useState("");
   const [aspectRatio, setAspectRatio] = useState("9:16");
   const [subtitles, setSubtitles] = useState(true);
@@ -39,11 +39,13 @@ export function AssemblyPage({ activity, project, backendUrl, job, renderJob, on
   const analysis = pickStoryboardAnalysis(activity, project);
   const assets = pickList(activity, project, "material_assets");
   const segments = pickList(activity, project, "voiceover_segments");
+  // Activities saved before the mode existed narrate with voiceover.
+  const withNarration = activity?.narration_mode !== "none";
   const plan = pickAssemblyPlan(activity, project);
   const command = plan?.metadata?.renderer?.command;
   const canBuild = Boolean(project && analysis?.shots?.length);
   const isRunning = busy || Boolean(job && !isTerminalJob(job));
-  const canRender = canBuild && assets.length > 0 && segments.length > 0 && !isRunning && !audioBusy && audioDraft === null;
+  const canRender = canBuild && assets.length > 0 && (segments.length > 0 || !withNarration) && !isRunning && !audioBusy && audioDraft === null;
   const assetById = useMemo(() => indexBy(assets, "asset_id"), [assets]);
   const segmentById = useMemo(() => indexBy(segments, "segment_id"), [segments]);
   const segmentByShot = useMemo(() => indexBy(segments, "shot_id"), [segments]);
@@ -62,9 +64,17 @@ export function AssemblyPage({ activity, project, backendUrl, job, renderJob, on
         <div className="pipeline-grid">
           <div><span>转写文案</span><strong>{readyLabel(Boolean(referenceText.trim()))}</strong></div>
           <div><span>分镜脚本</span><strong>{analysis?.shots?.length || 0} 条</strong></div>
-          <div><span>配音音频</span><strong>{segments.length} 条</strong></div>
+          <div><span>配音音频</span><strong>{withNarration ? `${segments.length} 条` : "无旁白"}</strong></div>
           <div><span>素材资产</span><strong>{assets.length} 个</strong></div>
         </div>
+        <label className="full-label">
+          旁白
+          <select aria-label="旁白" value={withNarration ? "voiceover" : "none"} disabled={isRunning || !onSetNarrationMode}
+            onChange={(event) => onSetNarrationMode?.(event.target.value)}>
+            <option value="voiceover">使用配音</option>
+            <option value="none">无旁白，只用音乐（时长按分镜）</option>
+          </select>
+        </label>
         <label className="full-label">
           输出视频路径
           <input
@@ -130,7 +140,7 @@ export function AssemblyPage({ activity, project, backendUrl, job, renderJob, on
               const planItem = planItemByShot.get(shot.shot_id);
               const materialId = shot.metadata?.material_asset_id || planItem?.material_asset_id;
               const asset = assetById.get(materialId);
-              const segment = segmentById.get(planItem?.voiceover_segment_id) || segmentByShot.get(shot.shot_id);
+              const segment = withNarration ? segmentById.get(planItem?.voiceover_segment_id) || segmentByShot.get(shot.shot_id) : null;
               const duration = planItem?.duration_seconds ?? shotTiming(shot, asset, segment?.audio_path ? segment : null).target;
               return (
                 <article className="assembly-row" key={shot.shot_id}>
@@ -147,8 +157,8 @@ export function AssemblyPage({ activity, project, backendUrl, job, renderJob, on
                     <p>{asset?.scene_summary || (shot.material_requirements || []).join("、") || "等待素材"}</p>
                   </div>
                   <div>
-                    <strong>{segment?.segment_id || "待生成"}</strong>
-                    <p>{segment?.audio_path || "等待配音"}</p>
+                    <strong>{segment?.segment_id || (withNarration ? "待生成" : "无旁白")}</strong>
+                    <p>{segment?.audio_path || (withNarration ? "等待配音" : "按分镜时长")}</p>
                   </div>
                   <span>
                     {Number.isFinite(duration) ? Number(duration.toFixed(2)) : "--"}s

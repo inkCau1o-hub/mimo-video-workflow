@@ -352,6 +352,10 @@ class AssemblyPlan(JsonDataclassMixin):
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
+# "none" cuts a music-only video whose shot lengths come from the storyboard.
+NARRATION_MODES = ("voiceover", "none")
+
+
 @dataclass
 class WorkflowActivity(JsonDataclassMixin):
     activity_id: str = ""
@@ -363,6 +367,7 @@ class WorkflowActivity(JsonDataclassMixin):
     storyboard_analysis: Optional[StoryboardAnalysis] = None
     material_assets: List[MaterialAsset] = field(default_factory=list)
     voiceover_segments: List[VoiceoverSegment] = field(default_factory=list)
+    narration_mode: str = "voiceover"
     assembly_plan: Optional[AssemblyPlan] = None
     status: Dict[str, str] = field(default_factory=dict)
     created_at: str = field(default_factory=_now_iso)
