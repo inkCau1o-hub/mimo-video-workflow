@@ -52,3 +52,16 @@ windows-app/logs/
 node_modules/
 apps/desktop/node_modules
 apps/desktop/dist/
+
+# Client material, samples and test projects never enter the repository
+samples/
+projects/
+modules/
+.venv_失效_*/
+*.heic
+*.HEIC
+*.jpg
+*.jpeg
+*.png
+!apps/desktop/public/**/*.png
+._*
