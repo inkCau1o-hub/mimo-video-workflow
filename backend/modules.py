@@ -35,6 +35,10 @@ STATUS_STOPPED = "stopped"
 STATUS_STARTING = "starting"
 STATUS_RUNNING = "running"
 STATUS_FAILED = "failed"
+MISSING_REMEDY = (
+    "请运行安装环境脚本取出 AI 动画子模块；没有该私有仓库的权限时，"
+    f"把 AI 动画仓库放到同级目录 ../ai-animation，或设置 {ANIMATION_DIR_ENV} 指向它。"
+)
 
 _EXTRA_BIN_DIRS = (
     Path.home() / ".local" / "bin",
@@ -153,9 +157,12 @@ class ModuleManager:
         candidates = animation_candidates(self.env)
         directory = pick_animation_dir(candidates)
         if directory is None:
-            module.reason = "未找到 AI 动画目录：" + "、".join(str(path) for path in candidates)
+            module.reason = "未找到 AI 动画目录（已查找：" + "、".join(str(path) for path in candidates) + "）。" + MISSING_REMEDY
             return module
         module.directory = directory.resolve()
+        if not any(module.directory.iterdir()):
+            module.reason = f"AI 动画子模块尚未取出（{module.directory} 是空文件夹）。" + MISSING_REMEDY
+            return module
         try:
             manifest = load_manifest(module.directory)
         except ModuleError as exc:

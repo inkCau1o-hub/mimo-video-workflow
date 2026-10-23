@@ -91,6 +91,7 @@ class ModuleManagerTest(unittest.TestCase):
         self.assertEqual(modules[0], {"id": "feed", "name": "信息流剪辑", "available": True, "status": "running"})
         self.assertFalse(modules[1]["available"])
         self.assertIn("未找到 AI 动画目录", modules[1]["reason"])
+        self.assertIn(ANIMATION_DIR_ENV, modules[1]["reason"])
         with self.assertRaises(ModuleError):
             self.manager(env=env).start("animation")
 
@@ -98,8 +99,16 @@ class ModuleManagerTest(unittest.TestCase):
         empty = Path(self.tmp.name) / "modules" / "ai-animation"
         empty.mkdir(parents=True)
         self.assertEqual(pick_animation_dir([empty, self.dir]), self.dir)
-        self.assertEqual(pick_animation_dir([empty]), empty)  # still reported, as missing launcher.json
+        self.assertEqual(pick_animation_dir([empty]), empty)  # still reported, as a submodule not checked out
         self.assertIsNone(pick_animation_dir([Path(self.tmp.name) / "nowhere"]))
+
+    def test_empty_submodule_folder_alone_explains_how_to_get_it(self):
+        empty = Path(self.tmp.name) / "modules" / "ai-animation"
+        empty.mkdir(parents=True)
+        item = self.manager(env={**os.environ, ANIMATION_DIR_ENV: str(empty)}).describe()["modules"][1]
+        self.assertFalse(item["available"])
+        self.assertIn("尚未取出", item["reason"])
+        self.assertIn("安装环境脚本", item["reason"])
 
     def test_manifest_validation(self):
         for bad in ({"command": []}, {"command": "node x"}, {"command": ["node"], "default_port": 0},
