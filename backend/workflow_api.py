@@ -23,6 +23,7 @@ from title_generator import TitleGenerator
 from media_assembler import FFmpegAssemblyRenderer
 from material_segments import SegmentIndexer, finite_number, recommend_segments, source_signature
 from multimodal_interfaces import FFMPEG_PATH
+from tools.normalize_image import is_image, normalize_image
 
 from .jobs import JobContext, JobManager, JobCancelledError
 from media_render import RenderCancelled
@@ -242,8 +243,8 @@ class WorkflowBackend:
         for file_info in files:
             original_filename = str(file_info.get("filename") or "").strip()
             filename = _safe_upload_filename(original_filename)
-            if not _is_likely_video_path(filename):
-                raise ValueError(f"不支持的视频文件类型: {original_filename or filename}")
+            if not (_is_likely_video_path(filename) or (materials and is_image(filename))):
+                raise ValueError(f"不支持的{'素材' if materials else '视频'}文件类型: {original_filename or filename}")
             content = file_info.get("content") or b""
             if not isinstance(content, (bytes, bytearray)) or not content:
                 raise ValueError(f"上传文件为空: {original_filename or filename}")
@@ -492,7 +493,7 @@ class WorkflowBackend:
             context.update(10, "tagging materials")
             paths = material_paths
             if material_dir:
-                paths = [str(path) for path in Path(material_dir).expanduser().rglob("*") if path.is_file() and _is_likely_video_path(path)]
+                paths = [str(path) for path in Path(material_dir).expanduser().rglob("*") if path.is_file() and (_is_likely_video_path(path) or is_image(path))]
             paths = self._import_material_paths(state, paths)
             assets = state.analyze_materials(
                 material_paths=paths,
@@ -523,6 +524,8 @@ class WorkflowBackend:
         known = {asset.asset_id for asset in state.material_assets}
         if any(identifier not in known for identifier in identifiers):
             raise ValueError("所选素材已不存在，请刷新后重试。")
+        if any(is_image(asset.file_path) for asset in state.material_assets if asset.asset_id in identifiers):
+            raise ValueError("图片素材没有时间片段，请只选择视频素材分析片段。")
         window = finite_number(payload.get("window_seconds", 8), "分析片段长度", 2, 30)
         model = payload.get("vision_model") or config.VISION_API_MODEL
 
@@ -645,6 +648,10 @@ class WorkflowBackend:
             if not checked["exists"]:
                 raise ValueError(f"素材不存在，请重新选择: {raw}")
             source = Path(checked["resolved_path"])
+            if is_image(source):
+                # Photos become upright sRGB JPEGs inside the project; the original file is left as it was.
+                imported.append(str(normalize_image(source, target_dir)))
+                continue
             try:
                 source.relative_to(root)
             except ValueError:

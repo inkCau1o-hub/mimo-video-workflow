@@ -35,10 +35,10 @@ export function MaterialLibraryPage({ activity, project, backendUrl, job, onTagM
           </button>
         </div>
         <div className="action-row">
-          <button type="button" disabled={!project || uploading || isRunning} onClick={() => inputRef.current?.click()}>{uploading ? "正在上传..." : "选择素材视频"}</button>
+          <button type="button" disabled={!project || uploading || isRunning} onClick={() => inputRef.current?.click()}>{uploading ? "正在上传..." : "选择素材（视频或图片）"}</button>
           <span className="muted">上传不自动打标</span>
         </div>
-        <input ref={inputRef} className="hidden-input" type="file" accept="video/*,.mp4,.mov,.m4v,.avi,.mkv,.webm" multiple onChange={async (event) => {
+        <input ref={inputRef} className="hidden-input" type="file" accept="video/*,image/*,.mp4,.mov,.m4v,.avi,.mkv,.webm,.heic,.heif,.jpg,.jpeg,.png,.webp" multiple onChange={async (event) => {
           const files = Array.from(event.target.files || []);
           event.target.value = "";
           if (!files.length) return;
@@ -56,7 +56,7 @@ export function MaterialLibraryPage({ activity, project, backendUrl, job, onTagM
           aria-label="素材完整路径"
           value={paths}
           onChange={(event) => setPaths(event.target.value)}
-          placeholder="每行一个素材视频完整路径。"
+          placeholder="每行一个素材（视频或图片）完整路径；图片导入时自动转正并转成 sRGB。"
         />
         <JobProgress job={job} title={job?.job_type === "materials.index" ? "素材片段分析进度" : "素材打标进度"} />
         <div className="segment-index-controls">

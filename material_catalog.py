@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 from multimodal_interfaces import MaterialAnalyzer
+from tools.normalize_image import is_image
 
 
 VIDEO_EXTENSIONS = {
@@ -198,15 +199,17 @@ class MaterialCatalog:
             "environment",
             "environment_tags",
         )
-        duration = _first_duration(parsed, "duration", "duration_seconds", "length")
-        if duration is None:
+        image = is_image(video_path)
+        # A photo has no duration of its own; the shot decides how long it is shown.
+        duration = None if image else _first_duration(parsed, "duration", "duration_seconds", "length")
+        if duration is None and not image:
             duration = probe_duration(video_path)
 
         asset = {
             "schema": "MaterialAsset",
             "schema_version": 1,
             "asset_id": _asset_id(video_path),
-            "asset_type": "video",
+            "asset_type": "image" if image else "video",
             "path": video_path,
             "filename": Path(video_path).name if video_path else "",
             "material_type": material_type or "other",

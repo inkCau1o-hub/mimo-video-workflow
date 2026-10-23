@@ -108,7 +108,7 @@ pip install -r requirements.txt
 cd apps/desktop && npm install && cd ../..
 ```
 
-`requirements.txt`：`yt-dlp`、`faster-whisper`、`requests`、`imageio-ffmpeg`、`huggingface-hub`、`tkinterdnd2`。后端是标准库 `http.server`，无额外 Web 框架依赖。
+`requirements.txt`：`yt-dlp`、`faster-whisper`、`requests`、`imageio-ffmpeg`、`huggingface-hub`、`tkinterdnd2`、`Pillow`（图片素材转正、转 sRGB），以及 Windows/Linux 上读 HEIC 用的 `pillow-heif`（Mac 用系统自带的 `sips`）。后端是标准库 `http.server`，无额外 Web 框架依赖。
 
 ### 配置
 
