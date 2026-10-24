@@ -2,6 +2,7 @@
 
 import json
 import math
+import subprocess
 from collections.abc import Mapping
 
 
@@ -101,3 +102,24 @@ def assembly_audio_filters(settings, total, music_duration=None):
     else:
         graph.append(f"[{source}]anull[mixed]")
     return ";".join(graph)
+
+
+def shorten_pauses(ffmpeg, source, output, pauses, limit, runner=subprocess.run):
+    """Write source to output with every pause longer than limit cut to limit, half kept on each side.
+
+    Returns False, writing nothing, when no pause is longer than the limit.
+    """
+    pieces, cursor = [], 0.0
+    for start, end in sorted(pauses):
+        if end - start > limit:
+            pieces.append((cursor, start + limit / 2))
+            cursor = end - limit / 2
+    if not pieces:
+        return False
+    pieces.append((cursor, None))
+    chains = [f"[0:a]atrim=start={start:.6f}" + (f":end={end:.6f}" if end is not None else "") + f",asetpts=PTS-STARTPTS[p{index}]"
+              for index, (start, end) in enumerate(pieces)]
+    graph = ";".join(chains) + ";" + "".join(f"[p{index}]" for index in range(len(pieces))) + f"concat=n={len(pieces)}:v=0:a=1[out]"
+    runner([ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-i", str(source), "-filter_complex", graph,
+            "-map", "[out]", "-c:a", "pcm_s16le", str(output)], check=True, capture_output=True, timeout=300)
+    return True

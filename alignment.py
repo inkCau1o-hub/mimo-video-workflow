@@ -5,6 +5,7 @@ The known voiceover text is force-aligned to the audio in a separate Python envi
 main application stays light. Numbers are aligned in the way they are read and mapped back
 to the text. Clause boundaries next to English words are snapped to a detected silence.
 Without an aligner, or when it fails, cues are estimated from the character count.
+Silences inside a voiceover are reported as pauses, with the words on either side.
 """
 
 from __future__ import annotations
@@ -25,6 +26,8 @@ TRAILING = "，、；：。,;:. \n\t"
 LATIN = re.compile(r"[A-Za-z]")
 DIGITS = "零一二三四五六七八九"
 SNAP_WINDOW = 0.4
+PAUSE_LIMIT_SECONDS = 0.5  # pauses inside a voiceover longer than this are flagged by default
+PAUSE_TOLERANCE = 0.01  # silence detection jitter: a pause this close to the limit is within it
 MIN_CUE = 0.05
 
 
@@ -126,21 +129,42 @@ def _timed(char) -> bool:
     return all(isinstance(value, (int, float)) and math.isfinite(value) for value in char[1:3])
 
 
-def cues_from_chars(text: str, chars: Sequence[Sequence], duration: float,
-                    silences: Sequence[Tuple[float, float]] = ()) -> Tuple[List[dict], List[str]]:
-    """Continuous clause cues from per-character times of the spoken text, relative to the voice start."""
+def _units(text: str, chars: Sequence[Sequence]):
+    """(original token, start, end) per token of text, from the aligner's characters of its spoken form."""
     tokens = spoken_tokens(text)
     if len(chars) != sum(len(spoken) for _, spoken in tokens):
         raise AlignmentError("对齐结果和配音文案对不上")
-    units, cursor = [], 0
+    units, offsets, cursor, position = [], [], 0, 0
     for original, spoken in tokens:
         timed = [char for char in chars[cursor:cursor + len(spoken)] if _timed(char)]
         cursor += len(spoken)
         units.append((original, float(timed[0][1]) if timed else None, float(timed[-1][2]) if timed else None))
-    offsets, position = [], 0
-    for original, _, _ in units:
         offsets.append(position)
         position += len(original)
+    return units, offsets
+
+
+def internal_pauses(silences: Iterable[Tuple[float, float]], duration: float, edge: float = 0.02) -> List[Tuple[float, float]]:
+    """Silences inside the speech: those touching the start or the end of the voice are not pauses."""
+    return [(start, end) for start, end in silences if start > edge and end < duration - edge]
+
+
+def _pause(text: str, units, offsets, span: Tuple[float, float]) -> dict:
+    """A pause with the words on either side of it, when the characters are timed."""
+    start, end = span
+    before = after = ""
+    if units:
+        middle = (start + end) / 2
+        index = next((offset for unit, offset in zip(units, offsets)
+                      if unit[1] is not None and unit[1] >= middle and unit[0].strip() and unit[0] not in PUNCTUATION), len(text))
+        before, after = text[:index].rstrip(TRAILING)[-6:], text[index:].strip(TRAILING)[:6]
+    return {"start": round(start, 3), "end": round(end, 3), "seconds": round(end - start, 3), "before": before, "after": after}
+
+
+def cues_from_chars(text: str, chars: Sequence[Sequence], duration: float,
+                    silences: Sequence[Tuple[float, float]] = ()) -> Tuple[List[dict], List[str]]:
+    """Continuous clause cues from per-character times of the spoken text, relative to the voice start."""
+    units, offsets = _units(text, chars)
     parts, spans = clauses(text), []
     for _, a, b in parts:
         timed = [unit for unit, offset in zip(units, offsets)
@@ -215,20 +239,24 @@ def align_voiceovers(items: Sequence[Mapping], settings: Optional[Mapping], *, f
             reason = str(exc)
     results = []
     for item, answer in zip(items, answers):
-        problem = reason
+        problem, duration = reason, float(item["duration"])
+        try:
+            silences = detect_silences(item["audio"], ffmpeg, runner=runner) if ffmpeg else []
+        except (OSError, subprocess.SubprocessError):
+            silences = []
+        pauses = internal_pauses(silences, duration)
         if isinstance(answer, Mapping) and isinstance(answer.get("chars"), list):
             try:
-                silences = detect_silences(item["audio"], ffmpeg, runner=runner) if ffmpeg else []
-            except (OSError, subprocess.SubprocessError):
-                silences = []
-            try:
-                cues, warnings = cues_from_chars(item["text"], answer["chars"], float(item["duration"]), silences)
-                results.append({"source": "aligned", "cues": cues, "warnings": warnings})
+                cues, warnings = cues_from_chars(item["text"], answer["chars"], duration, silences)
+                units, offsets = _units(item["text"], answer["chars"])
+                results.append({"source": "aligned", "cues": cues, "warnings": warnings,
+                                "pauses": [_pause(item["text"], units, offsets, span) for span in pauses]})
                 continue
             except AlignmentError as exc:
                 problem = str(exc)
         elif isinstance(answer, Mapping) and answer.get("error"):
             problem = f"对齐失败：{answer['error']}"
-        results.append({"source": "estimated", "cues": estimate_cues(item["text"], float(item["duration"])),
-                        "warnings": [f"字幕时间为估算（{problem}）。"]})
+        results.append({"source": "estimated", "cues": estimate_cues(item["text"], duration),
+                        "warnings": [f"字幕时间为估算（{problem}）。"],
+                        "pauses": [_pause(item["text"], None, None, span) for span in pauses]})
     return results

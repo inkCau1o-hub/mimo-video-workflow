@@ -171,6 +171,16 @@ def record_workflow_update(activity):
             _append(history, activity, "工作流更新")
 
 
+def record_change(state, label, change):
+    """Run change(activity) between two history entries so that one undo reverts all of it."""
+    activity = state.current_activity
+    history = _prepare(activity)
+    result = change(activity)
+    if _snapshot(activity) != history["entries"][history["cursor"]]["snapshot"]:
+        _append(history, activity, label)
+    return result
+
+
 def save_shots(state, shots, label="编辑保存"):
     activity = state.current_activity
     shots = validate_shots(shots, activity)

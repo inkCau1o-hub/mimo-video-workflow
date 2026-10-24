@@ -30,8 +30,9 @@ from tools.normalize_image import is_image, normalize_image
 from .jobs import JobContext, JobManager, JobCancelledError
 from media_render import RenderCancelled
 from .project_store import ProjectStore
-from .editor_history import change_history, check_revision, history_summary, narration, record_workflow_update, save_shots
-from audio_mix import validate_audio_settings
+from .editor_history import (change_history, check_revision, history_summary, narration, record_change, save_shots,
+                             validate_shots)
+from audio_mix import shorten_pauses, validate_audio_settings
 from cover_render import render_cover, validate_cover_settings
 from media_render import RenderError, _Runner, _probe, _stream_duration, discover_executable
 from shot_timing import normalize_timing, shot_duration
@@ -646,8 +647,13 @@ class WorkflowBackend:
         except Exception as exc:  # noqa: BLE001 - measured subtitles are a bonus; the new voiceover is kept
             return [{"error": f"字幕对齐未完成：{exc}"}]
 
-    def _align_subtitles(self, state, shot_ids=None):
-        """Measured cues for each voiceover; shots still on automatic subtitles take them over."""
+    def _align_subtitles(self, state, shot_ids=None, label="按配音对齐字幕"):
+        """Measured cues for each voiceover; shots still on automatic subtitles take them over.
+
+        With a label the whole change is one undoable history entry; without one the caller records it.
+        """
+        if label:
+            return record_change(state, label, lambda activity: self._align_subtitles(state, shot_ids, label=None))
         activity = state.current_activity
         try:
             ffmpeg = discover_executable("ffmpeg")
@@ -679,13 +685,46 @@ class WorkflowBackend:
             report.append({"shot_id": segment.shot_id, "source": result["source"], "applied": applied, "warnings": warnings})
         if changed:
             try:
-                save_shots(state, shots, label="按配音对齐字幕")
+                shots = validate_shots(shots, activity)
             except ValueError:
-                # Another shot is invalid on its own; the cues placed here were checked one by one,
-                # so they are kept rather than blocked by it.
-                state.set_storyboard_shots(shots)
-                record_workflow_update(activity)
+                pass  # another shot is invalid on its own; the cues placed here were checked one by one
+            state.set_storyboard_shots(shots)
         return report
+
+    @_locked
+    def shorten_voiceover_pauses(self, project_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
+        limit = finite_number(payload.get("pause_limit_seconds", alignment.PAUSE_LIMIT_SECONDS), "句内停顿上限", 0.1, 3)
+
+        def run(state, context: JobContext) -> Dict[str, Any]:
+            context.update(10, "压短句内停顿")
+            result = record_change(state, "压短句内停顿", lambda activity: self._shorten_pauses(state, limit))
+            return {**result, "status": self.store.project_status(project_id)}
+
+        return self._submit_activity_job("voiceovers.pauses", project_id, run)
+
+    def _shorten_pauses(self, state, limit):
+        """Cut every pause inside a voiceover that is longer than limit; the original file is kept."""
+        activity = state.current_activity
+        ffmpeg = discover_executable("ffmpeg")
+        shortened = []
+        for segment in activity.voiceover_segments:
+            source = Path(segment.audio_path) if segment.audio_path else None
+            if not source or not source.is_file():
+                continue
+            duration, _ = _voice_duration(source, segment, ffmpeg)
+            long = [span for span in alignment.internal_pauses(alignment.detect_silences(source, ffmpeg), duration)
+                    if round(span[1] - span[0], 3) > limit + alignment.PAUSE_TOLERANCE]
+            original = Path(segment.metadata.get("original_audio_path") or source)
+            target = _unique_upload_path(source.with_name(f"{original.stem}_停顿{limit:g}s.wav"))
+            if not long or not shorten_pauses(ffmpeg, source, target, long, limit):
+                continue
+            segment.metadata.setdefault("original_audio_path", segment.audio_path)
+            segment.audio_path = str(target.resolve())
+            shortened.append({"shot_id": segment.shot_id, "audio_path": segment.audio_path, "pauses": len(long),
+                              "saved_seconds": round(sum(end - start - limit for start, end in long), 3)})
+        activity.metadata["pause_limit_seconds"] = limit
+        report = self._align_subtitles(state, {item["shot_id"] for item in shortened}, label=None) if shortened else []
+        return {"shortened": shortened, "alignment": report}
 
     @_locked
     def build_assembly_plan(self, project_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
