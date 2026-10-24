@@ -110,6 +110,8 @@ cd apps/desktop && npm install && cd ../..
 
 `requirements.txt`：`yt-dlp`、`faster-whisper`、`requests`、`imageio-ffmpeg`、`huggingface-hub`、`tkinterdnd2`、`Pillow`（图片素材转正、转 sRGB），以及 Windows/Linux 上读 HEIC 用的 `pillow-heif`（Mac 用系统自带的 `sips`）。后端是标准库 `http.server`，无额外 Web 框架依赖。
 
+配音字幕对齐（可选）：配音生成后会用强制对齐给字幕取实测时间。对齐在单独的 Python 环境里运行（WhisperX + PyTorch），不装进主程序。在配置文件里写 `aligner_python`（该环境的 python）、`align_model_dir`（中文 wav2vec2 模型目录）、`align_nltk_data`（NLTK 分句数据），或使用同名环境变量 `MIMO_ALIGNER_PYTHON`、`MIMO_ALIGN_MODEL_DIR`、`MIMO_ALIGN_NLTK_DATA`。没有配置时，字幕按字数估算。实测数据见 [docs/WhisperX中文对齐实测.md](docs/WhisperX中文对齐实测.md)。
+
 ### 配置
 
 文案改写、配音等云端能力需要自行配置多模态大模型 API；未配置时相关功能不可用。具体字段以应用内设置为准，请勿把密钥提交到仓库。
