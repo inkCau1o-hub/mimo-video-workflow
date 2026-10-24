@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { estimateSubtitleCues, subtitleCorrections, applySubtitleCorrection, subtitleAtTime } from "../src/editor/subtitleEditing.js";
 import { shotEdit, shotTiming, shotErrors, serializeShots } from "../src/editor/shotEditing.js";
 
-const shot = { shot_id: "one", tts_text: "杜亚智能窗帘", script_text: "Script", duration_seconds: 6,
-  metadata: { other: "keep", edit: { subtitle: { text: "读亚智能窗帘。读亚。" } } } };
+const shot = { shot_id: "one", tts_text: "青禾智能窗帘", script_text: "Script", duration_seconds: 6,
+  metadata: { other: "keep", edit: { subtitle: { text: "清河智能窗帘。清河。" } } } };
 
 test("preview caption uses shot-relative cue times and hides during gaps", () => {
   const edit = { lead_in_seconds: .3, tail_out_seconds: .2, subtitle: { text: "fallback", timing_mode: "cues", cues: [{ start: .3, end: 1, text: "first" }, { start: 2, end: 3, text: "second" }] } };
@@ -51,16 +51,16 @@ test("estimated cues split punctuation and conserve the time range without zero-
 
 test("literal brand correction previews and changes captions only", () => {
   const before = structuredClone(shot);
-  const matches = subtitleCorrections([shot], "读亚", "杜亚");
+  const matches = subtitleCorrections([shot], "清河", "青禾");
   assert.equal(matches[0].count, 2);
-  assert.equal(matches[0].after, "杜亚智能窗帘。杜亚。");
-  const corrected = applySubtitleCorrection([shot], "读亚", "杜亚")[0];
+  assert.equal(matches[0].after, "青禾智能窗帘。青禾。");
+  const corrected = applySubtitleCorrection([shot], "清河", "青禾")[0];
   assert.equal(corrected.metadata.edit.subtitle.text, matches[0].after);
   assert.equal(corrected.tts_text, shot.tts_text);
   assert.equal(corrected.script_text, shot.script_text);
   assert.equal(corrected.metadata.other, "keep");
   assert.deepEqual(shot, before);
-  for (const [from, to] of [["", "x"], ["杜亚", ""], ["x", "x"]]) assert.deepEqual(subtitleCorrections([shot], from, to), []);
+  for (const [from, to] of [["", "x"], ["青禾", ""], ["x", "x"]]) assert.deepEqual(subtitleCorrections([shot], from, to), []);
 });
 
 test("cue correction keeps exact timestamps and does not interpret regex or replacement syntax", () => {
