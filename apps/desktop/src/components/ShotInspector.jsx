@@ -98,7 +98,8 @@ export function ShotInspector({ shot, asset, assets, voice, timing, errors, back
         <label className="full-label">推拉幅度（倍）<input type="number" min="1.01" max="1.5" step="0.01" value={edit.motion.zoom} disabled={edit.motion.kind === "none"} onChange={(event) => onSettings({ motion: { zoom: event.target.value } })} /></label>
       </div> : null}
       <label className="full-label">{edit.subtitle.timing_mode === "cues" ? "分句底稿" : "字幕正文"}<textarea className="mini-textarea" value={edit.subtitle.text} onChange={(event) => onSettings({ subtitle: { text: event.target.value } })} /></label>
-      <SubtitleTiming edit={edit} timing={timing} onSettings={onSettings} onPlayCue={playCue} hasVoice={Boolean(voice)} disabled={disabled} />
+      <SubtitleTiming edit={edit} timing={timing} onSettings={onSettings} onPlayCue={playCue} hasVoice={Boolean(voice)} disabled={disabled}
+        alignment={voice?.metadata?.subtitle_alignment} />
       <div className="editor-field-row">
         <label className="full-label">字幕位置<select value={edit.subtitle.position} onChange={(event) => onSettings({ subtitle: { position: event.target.value } })}><option value="top">顶部</option><option value="center">居中</option><option value="bottom">底部</option></select></label>
         <label className="full-label">字号（720p）<input type="number" min="16" max="96" value={edit.subtitle.font_size} onChange={(event) => onSettings({ subtitle: { font_size: event.target.value } })} /></label>

@@ -22,6 +22,13 @@ export function shotEdit(shot, aspectRatio) {
   };
 }
 
+// Voice-relative measured cues placed after the shot's lead-in, rounded like the backend.
+export function alignedCues(alignment, leadIn) {
+  const lead = Number(leadIn) || 0;
+  const at = (seconds) => Math.round((lead + Number(seconds)) * 100) / 100;
+  return (alignment?.cues || []).map((cue) => ({ start: at(cue.start), end: at(cue.end), text: cue.text }));
+}
+
 export function editShotFraming(shots, id, aspectRatio, change) {
   if (!["9:16", "16:9"].includes(aspectRatio)) throw new Error("画幅无效。");
   const shot = shots.find((item) => item.shot_id === id);

@@ -85,9 +85,10 @@ export default function App() {
       onIndexSegments={(payload) => submitProjectJob("/materials/index", payload, "素材片段分析")}
     />,
     voiceover: <VoiceoverPage
-      activity={activity} project={project} backendUrl={backendUrl} job={latestJob("voiceovers.generate", "voiceovers.regenerate")}
+      activity={activity} project={project} backendUrl={backendUrl} job={latestJob("voiceovers.generate", "voiceovers.regenerate", "voiceovers.align")}
       onGenerateVoiceovers={(payload) => submitProjectJob("/voiceovers/generate", payload, "生成配音")}
       onRegenerateVoiceover={(payload) => submitProjectJob("/voiceovers/regenerate", payload, `重新生成配音 ${payload.shot_id}`)}
+      onAlignVoiceovers={() => submitProjectJob("/voiceovers/align", {}, "按配音对齐字幕")}
     />,
     assembly: <AssemblyPage
       activity={activity} project={project} backendUrl={backendUrl}

@@ -1,8 +1,9 @@
-import { Check, ListPlus, Play, Plus, Trash2 } from "lucide-react";
+import { AudioLines, Check, ListPlus, Play, Plus, Trash2 } from "lucide-react";
 import { EditorButton } from "./EditorButton.jsx";
+import { alignedCues } from "../editor/shotEditing.js";
 import { estimateSubtitleCues } from "../editor/subtitleEditing.js";
 
-export function SubtitleTiming({ edit, timing, onSettings, onPlayCue, hasVoice, disabled }) {
+export function SubtitleTiming({ edit, timing, onSettings, onPlayCue, hasVoice, disabled, alignment }) {
   const subtitle = edit.subtitle;
   const cues = subtitle.cues;
   const change = (patch) => onSettings({ subtitle: patch });
@@ -17,12 +18,16 @@ export function SubtitleTiming({ edit, timing, onSettings, onPlayCue, hasVoice, 
     {subtitle.timing_mode === "cues" ? <>
       <div className="editor-toolbar">
         <EditorButton icon={ListPlus} label="按正文估算分句时间" disabled={disabled || !estimated.length || cues.length > 0} onClick={() => change({ cues: estimated, timing_source: "estimated" })}>估算分句</EditorButton>
+        <EditorButton icon={AudioLines} label="按配音实测时间重新分句" disabled={disabled || !alignment?.cues?.length}
+          onClick={() => change({ cues: alignedCues(alignment, edit.lead_in_seconds), timing_source: alignment.source })}>按配音分句</EditorButton>
         <EditorButton icon={Plus} label="添加定时字幕" disabled={disabled || cues.length >= 100} onClick={() => {
           const next = cues.length ? Number(cues[cues.length - 1].end) : start;
           change({ cues: [...cues, { start: next, end: Math.min(timing.target, next + 1), text: "" }] });
         }} />
         {subtitle.timing_source === "estimated" ? <><span className="editor-warning" role="status">估算时间 · 待校准</span><EditorButton icon={Check} label="标记字幕时间已校准" disabled={disabled} onClick={() => change({ timing_source: "manual" })} /></> : null}
+        {subtitle.timing_source === "aligned" ? <span className="editor-ok" role="status">实测时间 · 按配音对齐</span> : null}
       </div>
+      {alignment?.warnings?.length ? <ul className="alignment-notes">{alignment.warnings.map((warning) => <li className="editor-warning" key={warning}>{warning}</li>)}</ul> : null}
       <ol className="subtitle-cues" aria-label="定时字幕列表">
         {cues.map((cue, index) => <li key={index}>
           <div className="editor-field-row">

@@ -1023,6 +1023,8 @@ details summary { cursor: pointer; font-size: 13px; margin-bottom: 10px; }
 .history-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; }
 .history-toolbar > label { flex: 1 1 220px; }
 .editor-warning { font-size: 12px; line-height: 1.5; margin: 0; color: #805300; }
+.editor-ok { font-size: 12px; line-height: 1.5; margin: 0; color: #167b69; }
+.alignment-notes { margin: 4px 0 0; padding-left: 18px; }
 .editor-errors { margin: 0; padding-left: 18px; color: #a01818; font-size: 12px; line-height: 1.6; }
 .editor-conflict { padding: 8px 0; color: #a01818; font-size: 12px; }
 .editor-save-status { margin: 0; min-height: 18px; overflow-wrap: anywhere; }

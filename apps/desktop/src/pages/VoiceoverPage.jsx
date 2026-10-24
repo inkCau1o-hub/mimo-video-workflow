@@ -14,7 +14,7 @@ function toProjectMediaUrl(backendUrl, projectId, segment) {
   return `${baseUrl}/projects/${encodeURIComponent(projectId)}/media?path=${encodeURIComponent(path)}${versionQuery}`;
 }
 
-export function VoiceoverPage({ activity, backendUrl, project, job, onGenerateVoiceovers, onRegenerateVoiceover }) {
+export function VoiceoverPage({ activity, backendUrl, project, job, onGenerateVoiceovers, onRegenerateVoiceover, onAlignVoiceovers }) {
   const [voice, setVoice] = useState("");
   const [audioFormat, setAudioFormat] = useState("mp3");
   const [stylePrompt, setStylePrompt] = useState("自然、清晰、适合短视频口播");
@@ -26,6 +26,7 @@ export function VoiceoverPage({ activity, backendUrl, project, job, onGenerateVo
   const isBusy = isRunning || Boolean(regeneratingShotId);
   const canGenerate = Boolean(project?.project_id && shots.length && onGenerateVoiceovers && !isBusy);
   const canRegenerate = Boolean(project?.project_id && onRegenerateVoiceover && !isBusy);
+  const canAlign = Boolean(project?.project_id && onAlignVoiceovers && segments.some((segment) => segment.audio_path) && !isBusy);
   const settings = { voice: voice.trim(), audio_format: audioFormat, style_prompt: stylePrompt.trim() };
   const segmentByShot = useMemo(() => {
     const result = new Map();
@@ -60,9 +61,13 @@ export function VoiceoverPage({ activity, backendUrl, project, job, onGenerateVo
             <h2>配音</h2>
             <p>按分镜的 tts_text 生成配音片段。</p>
           </div>
-          <button type="button" className="primary" onClick={submit} disabled={!canGenerate}>
-            生成配音
-          </button>
+          <div className="action-row">
+            <button type="button" onClick={() => canAlign && onAlignVoiceovers()} disabled={!canAlign}
+              title="用现有配音取逐字时间并更新自动字幕，配音本身不变">按配音对齐字幕</button>
+            <button type="button" className="primary" onClick={submit} disabled={!canGenerate}>
+              生成配音
+            </button>
+          </div>
         </div>
         <div className="field-row">
           <label>
