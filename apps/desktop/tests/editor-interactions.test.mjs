@@ -171,15 +171,15 @@ test("timing drafts generate editable cues, preserve narration and serialize on 
 test("brand correction previews, applies to draft and is undoable without narration changes", async (t) => {
   let sent;
   const ui = setup(t, { onSaveShots: async (shots) => { sent = shots; return null; } });
-  ui.change("字幕正文", "读亚窗帘。读亚。");
-  ui.change("原词", "读亚");
-  ui.change("正确词 / 品牌词", "杜亚");
-  assert.equal(ui.tree.root.findByProps({ "aria-label": "纠词预览" }).findAllByType("ins")[0].children[0], "杜亚窗帘。杜亚。");
+  ui.change("字幕正文", "清河窗帘。清河。");
+  ui.change("原词", "清河");
+  ui.change("正确词 / 品牌词", "青禾");
+  assert.equal(ui.tree.root.findByProps({ "aria-label": "纠词预览" }).findAllByType("ins")[0].children[0], "青禾窗帘。青禾。");
   await ui.click("将字幕纠词应用到草稿");
-  assert.equal(ui.field("字幕正文").props.value, "杜亚窗帘。杜亚。");
+  assert.equal(ui.field("字幕正文").props.value, "青禾窗帘。青禾。");
   assert.equal(ui.button("将字幕纠词应用到草稿").props.disabled, true);
   await ui.click("撤销草稿");
-  assert.equal(ui.field("字幕正文").props.value, "读亚窗帘。读亚。");
+  assert.equal(ui.field("字幕正文").props.value, "清河窗帘。清河。");
   await ui.click("重做草稿");
   await ui.click("保存分镜");
   assert.equal(sent[0].tts_text, "Voice");

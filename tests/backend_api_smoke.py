@@ -102,7 +102,7 @@ class FakeAIRewriter:
     def rewrite_with_prompt(self, prompt):
         if "标题" in prompt and "每行一个标题" in prompt:
             assert "旧流程改写结果" in prompt
-            return "杜亚智能窗帘真香\n全屋智能窗帘攻略"
+            return "青禾智能窗帘真香\n全屋智能窗帘攻略"
         assert "后端转写文本" in prompt
         return "这是后端服务化旧流程改写结果"
 
@@ -125,13 +125,13 @@ def fake_transcribe_video(video_path, output_dir, model_size):
 
 def sample_product_profile(**overrides):
     profile = {
-        "product_name": "杜亚智能窗帘",
-        "brand_name": "杜亚官方旗舰店",
+        "product_name": "青禾智能窗帘",
+        "brand_name": "青禾官方旗舰店",
         "features": "静音电机、智能控制、稳定耐用",
         "selling_points": "安装方便、全屋智能联动、性价比高",
         "target_audience": "装修用户、智能家居用户",
         "scenarios": "卧室、客厅、全屋智能",
-        "promotion": "源头工厂活动",
+        "promotion": "新品首发优惠",
         "rewrite_requirements": "保留核心信息，适合短视频口播，控制在300字以内",
         "tone": "口语化、可信赖",
         "forbidden_claims": "不能夸大效果，不能虚假承诺",
@@ -284,7 +284,7 @@ def test_backend_http_workflow_chain():
             project_id = project_payload["status"]["project_id"]
             first_activity_id = project_payload["status"]["current_activity_id"]
             assert project_payload["status"]["activity_count"] == 1
-            assert project_payload["status"]["product_name"] == "杜亚智能窗帘"
+            assert project_payload["status"]["product_name"] == "青禾智能窗帘"
             assert project_payload["status"]["product_profile_complete"] is True
             assert project_payload["project"]["product_profile"]["selling_points"] == "安装方便、全屋智能联动、性价比高"
             assert project_payload["project"]["activities"][0]["activity_id"] == first_activity_id
@@ -302,11 +302,11 @@ def test_backend_http_workflow_chain():
                 base_url,
                 "PATCH",
                 f"/projects/{project_id}",
-                {"product_profile": sample_product_profile(product_name="杜亚梦幻帘")},
+                {"product_profile": sample_product_profile(product_name="青禾柔纱帘")},
             )
             assert status == 200, profile_payload
-            assert profile_payload["status"]["product_name"] == "杜亚梦幻帘"
-            assert profile_payload["project"]["product_profile"]["product_name"] == "杜亚梦幻帘"
+            assert profile_payload["status"]["product_name"] == "青禾柔纱帘"
+            assert profile_payload["project"]["product_profile"]["product_name"] == "青禾柔纱帘"
 
             status, delete_candidate = request_json(base_url, "POST", "/projects", {"name": "删除测试"})
             assert status == 201, delete_candidate
@@ -343,13 +343,13 @@ def test_backend_http_workflow_chain():
             status, payload = request_multipart(
                 base_url,
                 f"/projects/{project_id}/reference/upload-videos",
-                [("videos", "@杜亚官方旗舰店 这才是品质生活该装的窗帘！Real6Pro 720P.mp4", b"fake-video", "video/mp4")],
+                [("videos", "@青禾官方旗舰店 居家好物实拍！X1Pro 720P.mp4", b"fake-video", "video/mp4")],
             )
             assert status == 200, payload
             uploaded_path = Path(payload["uploaded_videos"][0]["file_path"])
             assert uploaded_path.exists()
             assert uploaded_path.suffix == ".mp4"
-            assert "杜亚官方旗舰店" in uploaded_path.name
+            assert "青禾官方旗舰店" in uploaded_path.name
             assert uploaded_path.parent.name == "reference"
             assert uploaded_path.parent.parent.name == "media"
             assert payload["validation"]["ok"] is True
@@ -384,7 +384,7 @@ def test_backend_http_workflow_chain():
             agent_transcribe_job = assert_succeeded_job(base_url, payload)
             assert "agent-reference.mp4" in agent_transcribe_job["result"]["reference_text"]
             state_after_agent_transcribe = server.backend.store.get_state(project_id)
-            assert state_after_agent_transcribe.current_activity.reference_copy.product_name == "杜亚梦幻帘"
+            assert state_after_agent_transcribe.current_activity.reference_copy.product_name == "青禾柔纱帘"
             assert (
                 state_after_agent_transcribe.current_activity.reference_copy.metadata["product_profile"]["rewrite_requirements"]
                 == "保留核心信息，适合短视频口播，控制在300字以内"
@@ -397,7 +397,7 @@ def test_backend_http_workflow_chain():
                 {
                     "videos": [str(reference_video)],
                     "model_size": "tiny",
-                    "product_name": "杜亚智能窗帘",
+                    "product_name": "青禾智能窗帘",
                     "keywords": ["智能", "安静"],
                     "output_dir": str(Path(tmpdir) / "transcripts"),
                 },
@@ -418,7 +418,7 @@ def test_backend_http_workflow_chain():
             assert rewrite_job["result"]["status"]["has_copywriting"] is True
             rewrite_text = rewrite_job["result"]["copywriting"]["rewrite"]["text"]
             assert "旧流程改写结果" in rewrite_text
-            assert rewrite_job["result"]["copywriting"]["rewrite"]["product_profile"]["product_name"] == "杜亚梦幻帘"
+            assert rewrite_job["result"]["copywriting"]["rewrite"]["product_profile"]["product_name"] == "青禾柔纱帘"
 
             status, payload = request_json(
                 base_url,
@@ -429,7 +429,7 @@ def test_backend_http_workflow_chain():
             assert status == 202, payload
             titles_job = assert_succeeded_job(base_url, payload)
             titles = titles_job["result"]["copywriting"]["titles"]["items"]
-            assert titles == ["杜亚智能窗帘真香", "全屋智能窗帘攻略"]
+            assert titles == ["青禾智能窗帘真香", "全屋智能窗帘攻略"]
 
             status, payload = request_json(
                 base_url,
@@ -448,7 +448,7 @@ def test_backend_http_workflow_chain():
                 f"/projects/{project_id}/reference/text",
                 {
                     "text": "这是第二条活动文案，强调活动之间不能互相覆盖。",
-                    "product_name": "杜亚智能窗帘",
+                    "product_name": "青禾智能窗帘",
                     "keywords": ["智能", "安静"],
                 },
             )
