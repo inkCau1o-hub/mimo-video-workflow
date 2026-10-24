@@ -47,7 +47,7 @@ def main():
     else:
         data = backend.create_project({"name": "实战验收_" + datetime.now().strftime("%Y%m%d_%H%M%S"),
             "product_profile": {
-                "product_name": "杜亚智能窗帘", "features": "智能控制",
+                "product_name": "青禾智能窗帘", "features": "智能控制",
                 "selling_points": "日常开合便利", "rewrite_requirements": "只用参考中可验证的事实，不夸大，约50字",
                 "forbidden_claims": "不虚构价格、认证或效果承诺"}})
         state = backend.store.get_state(data["status"]["project_id"])

@@ -54,12 +54,12 @@ test("cover submission captures selected export and activity; failures retain se
   let sent;
   const ui = setup(t, { onGenerateCover: async (...args) => { sent = args; return null; } });
   ui.change("封面时间（秒）", ".6");
-  ui.change("封面标题", "杜亚智能窗帘");
+  ui.change("封面标题", "青禾智能窗帘");
   await act(async () => { await ui.button().props.onClick(); });
   assert.equal(sent[0].source_video_path, "export.mp4");
   assert.equal(sent[0].settings.time_seconds, .6);
   assert.deepEqual(sent[1].expectedScope, { projectId: "p", activityId: "a" });
-  assert.equal(ui.field("封面标题").props.value, "杜亚智能窗帘");
+  assert.equal(ui.field("封面标题").props.value, "青禾智能窗帘");
   assert.match(JSON.stringify(ui.tree.toJSON()), /设置已保留/);
   ui.change("封面时间（秒）", "2");
   assert.equal(ui.button().props.disabled, true);
