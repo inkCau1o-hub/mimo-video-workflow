@@ -24,7 +24,7 @@ def normalize_timing(edit):
     subtitle = dict(subtitle)
     if subtitle.get("timing_mode", "full") not in ("full", "narration", "cues"):
         raise ValueError("字幕时间模式无效。")
-    if subtitle.get("timing_source", "manual") not in ("manual", "estimated"):
+    if subtitle.get("timing_source", "manual") not in ("manual", "estimated", "aligned"):
         raise ValueError("字幕时间来源无效。")
     cues = subtitle.get("cues", [])
     if not isinstance(cues, list) or len(cues) > 100:

@@ -192,6 +192,18 @@ def shared_model_settings(env=None, user_config=None):
     return {name: value for name, value in values.items() if value}
 
 
+def aligner_settings(env=None, user_config=None):
+    """Where the forced-alignment Python and model live (see alignment.py); None until both are set."""
+    env = os.environ if env is None else env
+    data = load_user_config() if user_config is None else user_config
+    python = _first(env.get("MIMO_ALIGNER_PYTHON"), data.get("aligner_python"))
+    model = _first(env.get("MIMO_ALIGN_MODEL_DIR"), data.get("align_model_dir"))
+    if not python or not model:
+        return None
+    return {"python": python, "model": model,
+            "nltk_data": _first(env.get("MIMO_ALIGN_NLTK_DATA"), data.get("align_nltk_data")) or None}
+
+
 # Backward-compatible names for older modules and configs.
 DEEPSEEK_API_KEY = API_KEY
 DEEPSEEK_API_URL = API_URL

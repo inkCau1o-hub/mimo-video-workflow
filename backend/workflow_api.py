@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 from urllib.parse import unquote, urlparse
 
+import alignment
 import config
 from ai_rewriter import AIRewriter
 from title_generator import TitleGenerator
@@ -28,10 +29,11 @@ from tools.normalize_image import is_image, normalize_image
 from .jobs import JobContext, JobManager, JobCancelledError
 from media_render import RenderCancelled
 from .project_store import ProjectStore
-from .editor_history import change_history, check_revision, history_summary, save_shots
+from .editor_history import change_history, check_revision, history_summary, narration, record_workflow_update, save_shots
 from audio_mix import validate_audio_settings
 from cover_render import render_cover, validate_cover_settings
-from media_render import _Runner, _probe, _stream_duration, discover_executable
+from media_render import RenderError, _Runner, _probe, _stream_duration, discover_executable
+from shot_timing import normalize_timing, shot_duration
 
 
 def _locked(method):
@@ -590,8 +592,10 @@ class WorkflowBackend:
                 cancel_check=context.raise_if_cancelled,
                 progress_callback=context.update,
             )
+            report = self._align_after_voiceover(state)
             return {
-                "voiceover_segments": [segment.to_dict() for segment in segments],
+                "voiceover_segments": [segment.to_dict() for segment in state.voiceover_segments],
+                "alignment": report,
                 "status": self.store.project_status(project_id),
             }
 
@@ -614,13 +618,71 @@ class WorkflowBackend:
                 cancel_check=context.raise_if_cancelled,
                 progress_callback=context.update,
             )
+            report = self._align_after_voiceover(state, {segment.shot_id})
             return {
-                "voiceover_segment": segment.to_dict(),
+                "voiceover_segment": next((item.to_dict() for item in state.voiceover_segments if item.shot_id == segment.shot_id),
+                                          segment.to_dict()),
                 "voiceover_segments": [item.to_dict() for item in state.voiceover_segments],
+                "alignment": report,
                 "status": self.store.project_status(project_id),
             }
 
         return self._submit_activity_job("voiceovers.regenerate", project_id, run)
+
+    @_locked
+    def align_voiceovers(self, project_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
+        def run(state, context: JobContext) -> Dict[str, Any]:
+            context.update(10, "按配音对齐字幕")
+            return {"alignment": self._align_subtitles(state), "status": self.store.project_status(project_id)}
+
+        return self._submit_activity_job("voiceovers.align", project_id, run)
+
+    def _align_after_voiceover(self, state, shot_ids=None):
+        try:
+            return self._align_subtitles(state, shot_ids)
+        except Exception as exc:  # noqa: BLE001 - measured subtitles are a bonus; the new voiceover is kept
+            return [{"error": f"字幕对齐未完成：{exc}"}]
+
+    def _align_subtitles(self, state, shot_ids=None):
+        """Measured cues for each voiceover; shots still on automatic subtitles take them over."""
+        activity = state.current_activity
+        try:
+            ffmpeg = discover_executable("ffmpeg")
+        except RenderError:
+            ffmpeg = None
+        targets, items = [], []
+        for segment in activity.voiceover_segments:
+            path = Path(segment.audio_path) if segment.audio_path else None
+            if (shot_ids is None or segment.shot_id in shot_ids) and path and path.is_file():
+                duration, measured = _voice_duration(path, segment, ffmpeg)
+                targets.append((segment, measured))
+                items.append({"audio": str(path), "text": segment.text, "duration": duration})
+        if not items:
+            return []
+        results = alignment.align_voiceovers(items, config.aligner_settings(), ffmpeg=ffmpeg)
+        shots = [shot.to_dict() for shot in activity.storyboard_analysis.shots] if activity.storyboard_analysis else []
+        by_shot, changed, report = {shot["shot_id"]: shot for shot in shots}, False, []
+        for (segment, measured), item, result in zip(targets, items, results):
+            shot = by_shot.get(segment.shot_id)
+            fits = shot is None or not _manual_shorter_than(shot, item["duration"])
+            if measured and fits:
+                segment.duration_seconds = round(item["duration"], 3)  # rendering measures the file too
+            segment.metadata["subtitle_alignment"] = {**result, "duration": item["duration"], "aligned_at": _now_iso()}
+            applied = bool(shot) and fits and narration(shot) == segment.text and _automatic_subtitle(shot)
+            if applied:
+                _apply_cues(shot, result["cues"], result["source"], segment.duration_seconds)
+                changed = True
+            warnings = result["warnings"] + ([] if fits else ["镜头的手动时长短于配音，字幕未更新。"])
+            report.append({"shot_id": segment.shot_id, "source": result["source"], "applied": applied, "warnings": warnings})
+        if changed:
+            try:
+                save_shots(state, shots, label="按配音对齐字幕")
+            except ValueError:
+                # Another shot is invalid on its own; the cues placed here were checked one by one,
+                # so they are kept rather than blocked by it.
+                state.set_storyboard_shots(shots)
+                record_workflow_update(activity)
+        return report
 
     @_locked
     def build_assembly_plan(self, project_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
@@ -1280,6 +1342,43 @@ def _path_from_reference(value: Any) -> str:
                 return path[1:]
         return path
     return text
+
+
+def _voice_duration(path: Path, segment, ffmpeg: Optional[str]):
+    """(seconds, measured): the length of a voiceover file, or the stored estimate when it cannot be probed."""
+    try:
+        ffprobe = discover_executable("ffprobe", sibling=Path(ffmpeg) if ffmpeg else None)
+        return _stream_duration(_probe(_Runner(None, None, 60), ffprobe, path, path.parent), "audio"), True
+    except (RenderError, OSError):
+        return float(segment.duration_seconds or 0), False
+
+
+def _manual_shorter_than(shot: Mapping[str, Any], seconds: float) -> bool:
+    edit = (shot.get("metadata") or {}).get("edit") or {}
+    return edit.get("duration_mode") == "manual" and float(shot["duration_seconds"]) + 0.001 < seconds
+
+
+def _automatic_subtitle(shot: Mapping[str, Any]) -> bool:
+    """Subtitles nobody has rewritten or timed by hand may take measured cues."""
+    subtitle = ((shot.get("metadata") or {}).get("edit") or {}).get("subtitle") or {}
+    if subtitle.get("text") not in (None, narration(shot)):
+        return False
+    if subtitle.get("timing_mode", "full") != "cues":
+        return True
+    return not subtitle.get("cues") or subtitle.get("timing_source") in ("estimated", "aligned")
+
+
+def _apply_cues(shot: Dict[str, Any], cues, source: str, voice_duration: float) -> None:
+    """Place voice-relative cues on the shot timeline after the lead-in, inside the shot."""
+    edit = shot.setdefault("metadata", {}).setdefault("edit", {})
+    lead = float(edit.get("lead_in_seconds", 0) or 0)
+    total = shot_duration(normalize_timing(edit), float(shot["duration_seconds"]), voice_duration or None)
+    placed = []
+    for cue in cues:
+        start, end = round(lead + cue["start"], 2), round(min(lead + cue["end"], total), 2)
+        if end - start >= 0.01:
+            placed.append({"start": start, "end": end, "text": cue["text"]})
+    edit["subtitle"] = {**(edit.get("subtitle") or {}), "timing_mode": "cues", "timing_source": source, "cues": placed}
 
 
 def _resolve_video_path(value: Any, base_dirs: Iterable[Path | str]) -> Dict[str, Any]:

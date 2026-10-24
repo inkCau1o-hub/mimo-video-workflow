@@ -229,6 +229,8 @@ class WorkflowRequestHandler(BaseHTTPRequestHandler):
                 return HTTPStatus.OK, self.backend.recommend_material_segments(project_id, payload)
             if method == "POST" and subpath == ["voiceovers", "generate"]:
                 return HTTPStatus.ACCEPTED, self.backend.generate_voiceovers(project_id, payload)
+            if method == "POST" and subpath == ["voiceovers", "align"]:
+                return HTTPStatus.ACCEPTED, self.backend.align_voiceovers(project_id, payload)
             if method == "POST" and subpath == ["voiceovers", "regenerate"]:
                 return HTTPStatus.ACCEPTED, self.backend.regenerate_voiceover(project_id, payload)
             if method == "POST" and subpath == ["assembly", "plan"]:
