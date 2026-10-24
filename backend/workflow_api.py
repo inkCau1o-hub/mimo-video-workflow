@@ -22,6 +22,7 @@ import config
 from ai_rewriter import AIRewriter
 from title_generator import TitleGenerator
 from media_assembler import FFmpegAssemblyRenderer
+from material_catalog import hidden
 from material_segments import SegmentIndexer, finite_number, recommend_segments, source_signature
 from multimodal_interfaces import FFMPEG_PATH
 from tools.normalize_image import is_image, normalize_image
@@ -495,7 +496,9 @@ class WorkflowBackend:
             context.update(10, "tagging materials")
             paths = material_paths
             if material_dir:
-                paths = [str(path) for path in Path(material_dir).expanduser().rglob("*") if path.is_file() and (_is_likely_video_path(path) or is_image(path))]
+                root = Path(material_dir).expanduser()
+                paths = [str(path) for path in root.rglob("*") if path.is_file() and not hidden(path, root)
+                         and (_is_likely_video_path(path) or is_image(path))]
             paths = self._import_material_paths(state, paths)
             assets = state.analyze_materials(
                 material_paths=paths,

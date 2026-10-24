@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import os
@@ -462,6 +463,28 @@ def _write_subtitles(path, text, duration, width, height, family, style=None, ev
     path.write_text(header, encoding="utf-8")
 
 
+def publish_new(staged, output):
+    """Give a finished file its final name, never replacing a file that is already there.
+
+    A hard link does this in one step. Volumes without hard links (exFAT and FAT drives, some
+    network shares) claim the name with an exclusive create instead and then move the file onto it.
+    """
+    try:
+        os.link(staged, output)
+        return
+    except FileExistsError:
+        raise
+    except OSError:
+        pass
+    os.close(os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644))
+    try:
+        os.replace(staged, output)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(output)
+        raise
+
+
 def render_assembly(plan, output_path, **options):
     """Keep all external exceptions redacted, including OS and callback failures."""
     try:
@@ -725,7 +748,7 @@ def _render(plan, output_path, *, ffmpeg_path, overwrite, include_voiceover,
             os.replace(staging, output)
         else:
             try:
-                os.link(staging, output)
+                publish_new(staging, output)
             except FileExistsError:
                 raise RenderError("output_exists", "The output was created by another job; it was not replaced.") from None
         runner.report(1.0, committed=True)

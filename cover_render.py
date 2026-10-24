@@ -10,7 +10,7 @@ import shutil
 import tempfile
 
 from media_render import (RenderError, _Runner, _probe, _stream_duration,
-                          _select_ffmpeg, discover_executable, discover_font, _write_subtitles)
+                          _select_ffmpeg, discover_executable, discover_font, publish_new, _write_subtitles)
 
 
 DEFAULT_COVER_SETTINGS = {"time_seconds": 0., "title": "", "position": "top", "font_size": 64,
@@ -94,7 +94,7 @@ def _render_cover(source, output, settings, cancel, progress, timeout):
             raise RenderError("invalid_output", "封面尺寸或格式校验失败。")
         runner.report(.95)
         runner.check()
-        os.link(staged, output)
+        publish_new(staged, output)
         result = {"image_path": str(output), "source_video_path": str(source), "settings": settings,
                   "frame_index": frame, "frame_time_seconds": frame / fps,
                   "width": video["width"], "height": video["height"], "size_bytes": output.stat().st_size}

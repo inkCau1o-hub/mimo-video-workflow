@@ -76,6 +76,21 @@ class ImageMaterialTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.backend.upload_reference_videos(self.pid, upload)
 
+    def test_folder_scans_skip_the_hidden_files_macos_leaves_on_external_drives(self):
+        # On exFAT and FAT drives macOS writes a "._name" companion next to files; they are not photos or videos.
+        folder = self.root / "外接盘素材"
+        (folder / ".Trashes").mkdir(parents=True)
+        self.photo(folder, "a.jpg")
+        (folder / "._a.jpg").write_bytes(b"\x00\x05\x16\x07 AppleDouble")
+        (folder / ".Trashes" / "old.jpg").write_bytes(b"deleted")
+        job = self.tag(material_dir=str(folder))
+        self.assertEqual(job["status"], "succeeded", job.get("error"))
+        self.assertEqual(len(self.state.material_assets), 1)
+        self.assertEqual(len(self.analyzer.seen), 1)
+        for name in ("clip.mp4", "._clip.mp4", ".Trashes/old.mp4"):
+            (folder / name).write_bytes(b"video")
+        self.assertEqual(self.state.material_catalog.scan_videos(str(folder)), [str(folder / "clip.mp4")])
+
     def test_photos_have_no_segments_to_index(self):
         self.assertEqual(self.tag(material_paths=[str(self.photo())])["status"], "succeeded")
         with self.assertRaisesRegex(ValueError, "图片素材"):

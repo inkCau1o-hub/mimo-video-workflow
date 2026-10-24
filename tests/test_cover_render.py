@@ -1,3 +1,4 @@
+import errno
 import hashlib
 import json
 from pathlib import Path
@@ -52,6 +53,13 @@ class CoverTests(unittest.TestCase):
             self.assertAlmostEqual(result["frame_time_seconds"], index / 20)
             self.assertGreater(self.pixels(output)[channel], 240)
         self.assertEqual(hashlib.sha256(self.source.read_bytes()).digest(), before)
+
+    def test_drives_without_hard_links_still_get_the_cover(self):
+        output = self.root / "cover.png"
+        with patch("media_render.os.link", side_effect=OSError(errno.ENOTSUP, "Operation not supported")):
+            render_cover(self.source, output, {})
+        self.assertGreater(self.pixels(output)[0], 240)
+        self.assertFalse(list(self.root.glob(".mimo-cover-*")))
 
     def test_literal_chinese_title_changes_pixels_in_selected_position(self):
         plain, titled = self.root / "plain.png", self.root / "titled.png"

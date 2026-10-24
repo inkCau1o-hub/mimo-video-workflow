@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import array
 import copy
+import errno
 import json
 import math
 import os
@@ -635,6 +636,23 @@ class RealRenderTests(unittest.TestCase):
                 self.output.write_bytes(b"another job")
         with self.assertRaises(RenderError) as caught:
             self.render(progress_callback=race, subtitles=False)
+        self.assertEqual(caught.exception.code, "output_exists")
+        self.assertEqual(self.output.read_bytes(), b"another job")
+        self.assert_clean()
+
+    def test_drives_without_hard_links_still_publish_and_never_replace(self):
+        # exFAT and FAT drives refuse hard links; the export lands anyway and still never replaces a file.
+        with patch("media_render.os.link", side_effect=OSError(errno.ENOTSUP, "Operation not supported")):
+            self.render(subtitles=False)
+            self.assertEqual(len(self.audio()), 12000)
+            self.assert_clean()
+            self.output.unlink()
+
+            def race(value):
+                if value >= .99:
+                    self.output.write_bytes(b"another job")
+            with self.assertRaises(RenderError) as caught:
+                self.render(progress_callback=race, subtitles=False)
         self.assertEqual(caught.exception.code, "output_exists")
         self.assertEqual(self.output.read_bytes(), b"another job")
         self.assert_clean()

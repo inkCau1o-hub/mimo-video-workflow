@@ -14,6 +14,11 @@ from multimodal_interfaces import MaterialAnalyzer
 from tools.normalize_image import is_image
 
 
+def hidden(path: Path, root: Path) -> bool:
+    """Hidden files and folders under root, such as the "._name" companions macOS writes on exFAT and FAT drives."""
+    return any(part.startswith(".") for part in path.relative_to(root).parts)
+
+
 VIDEO_EXTENSIONS = {
     ".mp4",
     ".mov",
@@ -138,7 +143,7 @@ class MaterialCatalog:
         return sorted(
             str(path)
             for path in iterator
-            if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS
+            if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS and not hidden(path, root)
         )
 
     def asset_from_analysis_result(
