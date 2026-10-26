@@ -53,7 +53,7 @@ class CoverTests(unittest.TestCase):
     def test_literal_chinese_title_changes_pixels_in_selected_position(self):
         plain, titled = self.root / "plain.png", self.root / "titled.png"
         render_cover(self.source, plain, {})
-        render_cover(self.source, titled, {"title": "杜亚 {\\pos(0,0)}\n智能窗帘", "position": "top"})
+        render_cover(self.source, titled, {"title": "青禾 {\\pos(0,0)}\n智能窗帘", "position": "top"})
         a, b = self.pixels(plain), self.pixels(titled)
         self.assertNotEqual(a[:360 * 250 * 3], b[:360 * 250 * 3])
         self.assertEqual(a[360 * 400 * 3:], b[360 * 400 * 3:])

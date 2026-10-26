@@ -149,7 +149,7 @@ def run():
             app.storyboard_count_var.set("1")
             app.storyboard_duration_var.set("8")
             app.product_entry.delete(0, tk.END)
-            app.product_entry.insert(0, "杜亚智能窗帘")
+            app.product_entry.insert(0, "青禾智能窗帘")
             app.points_entry.delete(0, tk.END)
             app.points_entry.insert(0, "智能、安静、安装方便")
             set_text(app.requirements_text, "口语化，短视频口播，突出智能窗帘体验，不夸大效果")

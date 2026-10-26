@@ -110,7 +110,7 @@ def main():
         print("COVER=" + image["image_path"], flush=True)
 
     portrait = stage("portrait_framing_fade_and_intact_timeline", lambda: render("9:16"))
-    stage("portrait_cover_without_rerender", lambda: cover(portrait, "杜亚智能窗帘\n日常家居实拍"))
+    stage("portrait_cover_without_rerender", lambda: cover(portrait, "青禾智能窗帘\n日常家居实拍"))
     moved = root / ("构图 封面 搬迁 " + identifier) / target.name
     shutil.copytree(target, moved)
     stage("reopen_relocated_project", lambda: backend.open_project({"path": str(moved)}))
@@ -128,7 +128,7 @@ def main():
 
     stage("relocated_covers_music_and_unchanged_voices", validate_relocation)
     landscape = stage("landscape_after_relocation", lambda: render("16:9"))
-    stage("landscape_cover_after_relocation", lambda: cover(landscape, "杜亚智能窗帘"))
+    stage("landscape_cover_after_relocation", lambda: cover(landscape, "青禾智能窗帘"))
     assert signatures(backend.store.get_state(pid)) == hashes
     report.update(relocation=str(moved), voice_hashes_unchanged=True, old_export_unchanged=True,
                   completed_at=datetime.now().isoformat())
